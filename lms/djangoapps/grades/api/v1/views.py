@@ -111,6 +111,16 @@ class GradeViewMixin(DeveloperErrorViewMixin):
                 error_code='user_mismatch'
             )
 
+        try:
+            return USER_MODEL.objects.get(username=username)
+
+        except USER_MODEL.DoesNotExist:
+            return self.make_error_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                developer_message='The user matching the requested username does not exist.',
+                error_code='user_does_not_exist'
+            )
+
     def _get_all_users(self, request, courses):
         """
         Validates course enrollments and returns the users course enrollment data
@@ -128,17 +138,6 @@ class GradeViewMixin(DeveloperErrorViewMixin):
                 status_code=status.HTTP_404_NOT_FOUND,
                 developer_message='The course does not have any enrollments.',
                 error_code='no_course_enrollments'
-            )
-
-    def _user_exist(self,username):
-        try:
-            return USER_MODEL.objects.get(username=username)
-
-        except USER_MODEL.DoesNotExist:
-            return self.make_error_response(
-                status_code=status.HTTP_404_NOT_FOUND,
-                developer_message='The user matching the requested username does not exist.',
-                error_code='user_does_not_exist'
             )
 
     def _read_or_create_grade(self, user, course, calculate=None, use_email=None):
