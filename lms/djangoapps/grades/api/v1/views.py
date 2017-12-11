@@ -20,6 +20,7 @@ from lms.djangoapps.grades.api.serializers import GradingPolicySerializer
 from lms.djangoapps.grades.new.course_grade import CourseGrade, CourseGradeFactory
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 from openedx.core.lib.api.paginators import NamespacedPageNumberPagination
+from openedx.core.lib.api.permissions import IsStaffOrOwner, OAuth2RestrictedApplicatonPermission
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
 from enrollment import data as enrollment_data
 from student.roles import CourseStaffRole
@@ -28,7 +29,6 @@ log = logging.getLogger(__name__)
 USER_MODEL = get_user_model()
 
 
-@view_auth_classes()
 class GradeViewMixin(DeveloperErrorViewMixin):
     """
     Mixin class for Grades related views.
@@ -79,7 +79,7 @@ class GradeViewMixin(DeveloperErrorViewMixin):
             error_code='user_or_course_does_not_exist',
         )
 
-    def _get_effective_user(self, request, courses):
+    def _get_effective_user(self, request, course):
         """
         Returns the user object corresponding to the request's 'username' parameter,
         or the current request.user if no 'username' was provided.
@@ -99,20 +99,19 @@ class GradeViewMixin(DeveloperErrorViewMixin):
             return request.user
 
         # Only a user with staff access may request grades for a user other than herself.
-        for course in courses:
-            if not has_access(request.user, CourseStaffRole.ROLE, course):
-                log.info(
-                    'User %s tried to access the grade for user %s.',
-                    request.user.username,
-                    username
-                )
-                return self.make_error_response(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    developer_message='The user requested does not match the logged in user.',
-                    error_code='user_mismatch'
-                )
+        if not has_access(request.user, CourseStaffRole.ROLE, course):
+            log.info(
+                'User %s tried to access the grade for user %s.',
+                request.user.username,
+                username
+            )
+            return self.make_error_response(
+                status_code=status.HTTP_403_FORBIDDEN,
+                developer_message='The user requested does not match the logged in user.',
+                error_code='user_mismatch'
+            )
 
-    def _get_all_user(self, request, courses):
+    def _get_all_users(self, request, courses):
         """
         Validates course enrollments and returns the users course enrollment data
         Returns a 404 error response if the user course enrollments does not exist.
@@ -202,6 +201,7 @@ class GradeViewMixin(DeveloperErrorViewMixin):
             raise AuthenticationFailed
 
 
+@view_auth_classes()
 class CourseGradeView(GradeViewMixin, GenericAPIView):
     """
     **Use Case**
@@ -279,24 +279,13 @@ class CourseGradeView(GradeViewMixin, GenericAPIView):
             # Returns a 404 if course_id is invalid, or request.user is not enrolled in the course
             return course
 
-        grade_user = self._get_effective_user(request, [course])
+        grade_user = self._get_effective_user(request, course)
         prep_course_for_grading(course, request)
 
         if isinstance(grade_user, Response):
             # Returns a 403 if the request.user can't access grades for the requested user,
             # or a 404 if the requested user does not exist or the course had no enrollments.
             return grade_user
-
-        elif isinstance(grade_user, list):
-            # List of grades for all users in course
-            if len(grade_user) > 40:
-                log.warning('Cannot calculate real-time bulk grades...reading from persisted grades')
-                should_calculate_grade = None
-
-            response = list()
-            for user in grade_user:
-                course_grade = self._read_or_create_grade(user, course, should_calculate_grade, use_email)
-                response.append(course_grade)
         else:
             # Grade for one user in course
             course_grade = self._read_or_create_grade(grade_user, course, should_calculate_grade, use_email)
@@ -371,6 +360,8 @@ class CourseGradeAllUserView(GradeViewMixin, GenericAPIView):
     # only call this method if it is allowed to receive a 'grades:read'
     # scope
     required_scopes = ['grades:statistics']
+    restricted_oauth_required = True
+    permission_classes = (OAuth2RestrictedApplicatonPermission, )
 
     def get(self, request, course_id):
         """
@@ -383,8 +374,6 @@ class CourseGradeAllUserView(GradeViewMixin, GenericAPIView):
             Return:
                 A JSON serialized representation of the requesting user's current grade status.
         """
-        self._elevate_access_if_restricted_application(request)
-
         should_calculate_grade = request.GET.get('calculate')
         use_email = request.GET.get('use_email', None)
 
@@ -394,33 +383,26 @@ class CourseGradeAllUserView(GradeViewMixin, GenericAPIView):
             # Returns a 404 if course_id is invalid, or request.user is not enrolled in the course
             return course
 
-        grade_user = self._get_all_user(request, [course])
-        page = self.paginator.paginate_queryset(grade_user, self.request, view=self)
+        enrollments_in_course = self._get_all_users(request, [course])
+        if isinstance(enrollments_in_course, Response):
+            # Returns a 403 if the request.user can't access grades for the requested user,
+            # or a 404 if the requested user does not exist or the course had no enrollments.
+            return enrollments_in_course
+
+        paged_enrollments = self.paginator.paginate_queryset(enrollments_in_course, self.request, view=self)
         response = []
 
         prep_course_for_grading(course, request)
 
-        if isinstance(grade_user, Response):
-            # Returns a 403 if the request.user can't access grades for the requested user,
-            # or a 404 if the requested user does not exist or the course had no enrollments.
-            return grade_user
-
-        elif isinstance(grade_user, list):
-            # List of grades for all users in course
-            if len(grade_user) > 40:
-                log.warning('Cannot calculate real-time bulk grades...reading from persisted grades')
-                should_calculate_grade = None
-
-            for user in page:
-                course_grade = self._read_or_create_grade(user, course, should_calculate_grade, use_email)
-                response.append(course_grade)
-
-        if page is not None:
-            return self.get_paginated_response(response)
+        for enrollment in paged_enrollments:
+            user = enrollment.user
+            course_grade = self._read_or_create_grade(user, course, should_calculate_grade, use_email)
+            response.append(course_grade)
 
         return Response(response)
 
 
+@view_auth_classes()
 class CourseGradingPolicy(GradeViewMixin, ListAPIView):
     """
     **Use Case**

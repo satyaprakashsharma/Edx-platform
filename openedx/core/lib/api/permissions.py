@@ -39,14 +39,20 @@ class OAuth2RestrictedApplicatonPermission(TokenHasScope):
         """
         Implement the business logic discussed above
         """
+        restricted_oauth_required = False
+        if hasattr(view, 'restricted_oauth_required'):
+            restricted_oauth_required = True
 
         token = request.auth
 
         if not token:
-            # If we are not an OAuth2 request - some APIs in Open edX allow for Django Session
-            # based authentication, then we must pass here and continue with other
-            # possible authorization checks declared on the API endpoint
-            return True
+            if not restricted_oauth_required:
+                # If we are not an OAuth2 request - some APIs in Open edX allow for Django Session
+                # based authentication, then we must pass here and continue with other
+                # possible authorization checks declared on the API endpoint
+                return True
+            else:
+                return False
 
         # check to see if token is a DOP token
         # if so this represents a client which is implicitly trusted
