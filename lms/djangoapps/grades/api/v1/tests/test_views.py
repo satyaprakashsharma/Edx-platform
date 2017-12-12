@@ -106,7 +106,7 @@ class GradeViewTestMixin(SharedModuleStoreTestCase):
         cls.student = UserFactory(username='dummy', password=cls.password)
         cls.other_student = UserFactory(username='foo', password=cls.password)
         cls.other_user = UserFactory(username='bar', password=cls.password)
-        cls.staff = StaffFactory(course_key=cls.course_keys[0], password=cls.password)
+        cls.staff = StaffFactory(course_key=cls.course_key, password=cls.password)
         cls.global_staff = GlobalStaffFactory.create()
         date = datetime(2013, 1, 22, tzinfo=UTC)
         for user in (cls.student, cls.other_student,):
