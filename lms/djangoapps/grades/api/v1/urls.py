@@ -14,10 +14,10 @@ urlpatterns = patterns(
         views.CourseGradeView.as_view(), name='course_grades'
     ),
     url(
-        r'^course_grade/{course_id}/all_users$'.format(
+        r'^course_grade/{course_id}/all_users/$'.format(
             course_id=settings.COURSE_ID_PATTERN,
         ),
-        views.CourseGradeAllUserView.as_view(), name='user_grades'
+        views.CourseGradeAllUsersView.as_view(), name='course_grades_all'
     ),
     url(
         r'^courses/{course_id}/policy/$'.format(
