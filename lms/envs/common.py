@@ -465,6 +465,8 @@ OAUTH2_PROVIDER = {
         # conform profile scope message that is presented to end-user
         # to lms/templates/provider/authorize.html. This may be revised later.
         'profile': 'Read your user profile',
+        'grades:read': 'Retrieve your grades for your enrolled courses',
+        'grades:statistics': 'Retrieve grades for all students in a course',
     },
 }
 # This is required for the migrations in oauth_dispatch.models

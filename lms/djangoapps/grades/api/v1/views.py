@@ -20,7 +20,7 @@ from lms.djangoapps.grades.api.serializers import GradingPolicySerializer
 from lms.djangoapps.grades.new.course_grade import CourseGrade, CourseGradeFactory
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 from openedx.core.lib.api.paginators import NamespacedPageNumberPagination
-from openedx.core.lib.api.permissions import IsStaffOrOwner, OAuth2RestrictedApplicatonPermission
+from openedx.core.lib.api.permissions import IsStaffOrOwner
 from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
 from enrollment import data as enrollment_data
 from student.roles import CourseStaffRole
@@ -256,7 +256,7 @@ class CourseGradeView(GradeViewMixin, GenericAPIView):
     # for RestrictedApplications (only). A RestrictedApplication can
     # only call this method if it is allowed to receive a 'grades:read'
     # scope
-    required_scopes = ['grades:read']
+    scopes = ['read']
 
     def get(self, request, course_id):
         """
@@ -358,7 +358,7 @@ class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
     # for RestrictedApplications (only). A RestrictedApplication can
     # only call this method if it is allowed to receive a 'grades:read'
     # scope
-    required_scopes = ['grades:statistics']
+    scopes = ['read']
     restricted_oauth_required = True
 
     def get(self, request, course_id):
