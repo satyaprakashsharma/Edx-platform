@@ -226,12 +226,6 @@ class CourseGradeView(GradeViewMixin, GenericAPIView):
 
     """
 
-    # needed for passing OAuth2RestrictedApplicatonPermission checks
-    # for RestrictedApplications (only). A RestrictedApplication can
-    # only call this method if it is allowed to receive a 'grades:read'
-    # scope
-    #scopes = ['read']
-
     def get(self, request, course_id):
         """
         Gets a course progress status.
@@ -328,12 +322,7 @@ class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
         }]
     """
 
-    # needed for passing OAuth2RestrictedApplicatonPermission checks
-    # for RestrictedApplications (only). A RestrictedApplication can
-    # only call this method if it is allowed to receive a 'grades:read'
-    # scope
-    #scopes = ['read']
-    restricted_oauth_required = True
+    #restricted_oauth_required = True
 
     def get(self, request, course_id):
         """
