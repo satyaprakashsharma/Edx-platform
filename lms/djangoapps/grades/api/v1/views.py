@@ -51,19 +51,7 @@ class GradeViewMixin(DeveloperErrorViewMixin):
                 error_code='invalid_course_key'
             )
 
-        #org_filter = self._get_org_filter(request)
-        #if org_filter:
-        #    if course_key.org not in org_filter:
-        #        return self.make_error_response(
-        #            status_code=status.HTTP_403_FORBIDDEN,
-        #            developer_message='The OAuth2 RestrictedApplication is not associated with org.',
-        #            error_code='course_org_not_associated_with_calling_application'
-        #        )
-
         try:
-            #course_org_filter = configuration_helpers.get_value('course_org_filter')
-            #if course_org_filter and course_key.org not in course_org_filter:
-            #    raise Http404
             return courses.get_course_with_access(
                 user,
                 access_action,
@@ -130,30 +118,18 @@ class GradeViewMixin(DeveloperErrorViewMixin):
         try:
             course = courses[0]
             required_token = request.META.get('HTTP_AUTHORIZATION').split()[1]
-            #applicationid = dot_models.AccessToken.objects.get(token='PWJ0aiGFczqRFghS6uHbT7ezrbwrFW').application
             applicationid = dot_models.AccessToken.objects.get(token=required_token).application
-            #log.info('####################token obtained from request  "%s"', required_token)
-            #log.info('####################applicaiton obtained from request  "%s"',applicationid) 
-            #log.info(applicationid.get_authorization_grant_type_display())
-            print(required_token)
-            #course = courses[0]
             if applicationid.get_authorization_grant_type_display() == 'Client credentials':
-                #org_filter = 'edX'
-                #return self.make_error_response(status_code=status.HTTP_404_NOT_FOUND,developer_message='The is  client_credentils',error_code='not_a_client_credentials')
                 return enrollment_data.get_user_enrollments(
                     course.id,serialize=False
                 )
             else: 
                 return self.make_error_response(status_code=status.HTTP_404_NOT_FOUND,developer_message='The is not client_credentils',error_code='not_a_client_credentials')
         except:
-            #required_token = request.META.get("HTTP_X_EDX_API_KEY")
-            #print(required_token)
-            #log.info('####################token obtained from request  "%s"', required_token)
-            #applicationid = dot_models.AccessToken.objects.get(token='PWJ0aiGFczqRFghS6uHbT7ezrbwrFW').application
             return self.make_error_response(
                 status_code=status.HTTP_404_NOT_FOUND,
-                developer_message='The ####course does not have any enrollments.',
-                error_code= 'not client_credentials'
+                developer_message='The course does not have any enrollments.',
+                error_code= 'enrollments not found'
             )
 
     def _read_or_create_grade(self, user, course, calculate=None, use_email=None):
