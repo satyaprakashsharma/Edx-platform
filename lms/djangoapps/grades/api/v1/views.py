@@ -121,15 +121,19 @@ class GradeViewMixin(DeveloperErrorViewMixin):
             applicationid = dot_models.AccessToken.objects.get(token=required_token).application
             if applicationid.get_authorization_grant_type_display() == 'Client credentials':
                 return enrollment_data.get_user_enrollments(
-                    course.id,serialize=False
+                    course.id, serialize=False
                 )
-            else: 
-                return self.make_error_response(status_code=status.HTTP_404_NOT_FOUND,developer_message='The is not client_credentils',error_code='not_a_client_credentials')
+            else:
+                return self.make_error_response(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    developer_message='The is not client_credentils grant.',
+                    error_code='token does not have the required grant'
+                )
         except:
             return self.make_error_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 developer_message='The course does not have any enrollments.',
-                error_code= 'enrollments not found'
+                error_code='enrollments not found'
             )
 
     def _read_or_create_grade(self, user, course, calculate=None, use_email=None):
@@ -161,7 +165,6 @@ class GradeViewMixin(DeveloperErrorViewMixin):
             'percent': course_grade.percent,
             'letter_grade': course_grade.letter_grade,
         }
-
 
     def perform_authentication(self, request):
         """

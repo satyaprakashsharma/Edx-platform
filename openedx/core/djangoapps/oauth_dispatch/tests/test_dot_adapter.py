@@ -5,6 +5,7 @@ Tests for DOT Adapter
 from datetime import timedelta
 
 import ddt
+from mock import patch
 from django.conf import settings
 from django.test import TestCase
 from django.utils.timezone import now

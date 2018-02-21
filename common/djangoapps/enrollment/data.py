@@ -300,6 +300,7 @@ def get_course_enrollment_info(course_id, include_expired=False):
     else:
         return CourseSerializer(course, include_expired=include_expired).data
 
+
 def get_user_enrollments(course_id, serialize=True):
     """Based on the course id, return all user enrollments in the course
     Args:
@@ -324,4 +325,3 @@ def get_user_enrollments(course_id, serialize=True):
             return qset
     except CourseEnrollment.DoesNotExist:
         return None
-
