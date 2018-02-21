@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.response import Response
-
+from oauth2_provider import models as dot_models
 from courseware.access import has_access
 from lms.djangoapps.ccx.utils import prep_course_for_grading
 from lms.djangoapps.courseware import courses
@@ -51,19 +51,19 @@ class GradeViewMixin(DeveloperErrorViewMixin):
                 error_code='invalid_course_key'
             )
 
-        org_filter = self._get_org_filter(request)
-        if org_filter:
-            if course_key.org not in org_filter:
-                return self.make_error_response(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    developer_message='The OAuth2 RestrictedApplication is not associated with org.',
-                    error_code='course_org_not_associated_with_calling_application'
-                )
+        #org_filter = self._get_org_filter(request)
+        #if org_filter:
+        #    if course_key.org not in org_filter:
+        #        return self.make_error_response(
+        #            status_code=status.HTTP_403_FORBIDDEN,
+        #            developer_message='The OAuth2 RestrictedApplication is not associated with org.',
+        #            error_code='course_org_not_associated_with_calling_application'
+        #        )
 
         try:
-            course_org_filter = configuration_helpers.get_value('course_org_filter')
-            if course_org_filter and course_key.org not in course_org_filter:
-                raise Http404
+            #course_org_filter = configuration_helpers.get_value('course_org_filter')
+            #if course_org_filter and course_key.org not in course_org_filter:
+            #    raise Http404
             return courses.get_course_with_access(
                 user,
                 access_action,
@@ -129,16 +129,31 @@ class GradeViewMixin(DeveloperErrorViewMixin):
         """
         try:
             course = courses[0]
-
-            org_filter = self._get_org_filter(request)
-            return enrollment_data.get_user_enrollments(
-                course.id, org_filter=org_filter, serialize=False
-            )
+            required_token = request.META.get('HTTP_AUTHORIZATION').split()[1]
+            #applicationid = dot_models.AccessToken.objects.get(token='PWJ0aiGFczqRFghS6uHbT7ezrbwrFW').application
+            applicationid = dot_models.AccessToken.objects.get(token=required_token).application
+            #log.info('####################token obtained from request  "%s"', required_token)
+            #log.info('####################applicaiton obtained from request  "%s"',applicationid) 
+            #log.info(applicationid.get_authorization_grant_type_display())
+            print(required_token)
+            #course = courses[0]
+            if applicationid.get_authorization_grant_type_display() == 'Client credentials':
+                #org_filter = 'edX'
+                #return self.make_error_response(status_code=status.HTTP_404_NOT_FOUND,developer_message='The is  client_credentils',error_code='not_a_client_credentials')
+                return enrollment_data.get_user_enrollments(
+                    course.id,serialize=False
+                )
+            else: 
+                return self.make_error_response(status_code=status.HTTP_404_NOT_FOUND,developer_message='The is not client_credentils',error_code='not_a_client_credentials')
         except:
+            #required_token = request.META.get("HTTP_X_EDX_API_KEY")
+            #print(required_token)
+            #log.info('####################token obtained from request  "%s"', required_token)
+            #applicationid = dot_models.AccessToken.objects.get(token='PWJ0aiGFczqRFghS6uHbT7ezrbwrFW').application
             return self.make_error_response(
                 status_code=status.HTTP_404_NOT_FOUND,
-                developer_message='The course does not have any enrollments.',
-                error_code='no_course_enrollments'
+                developer_message='The ####course does not have any enrollments.',
+                error_code= 'not client_credentials'
             )
 
     def _read_or_create_grade(self, user, course, calculate=None, use_email=None):
@@ -171,26 +186,6 @@ class GradeViewMixin(DeveloperErrorViewMixin):
             'letter_grade': course_grade.letter_grade,
         }
 
-    def _get_org_filter(self, request):
-        """
-        See if the request has an explicit ORG filter on the request
-        which limits which OAuth2 clients can see what courses
-        based on the association with a RestrictedApplication
-
-        For more information on RestrictedApplications and the
-        permissions model, see openedx/core/lib/api/permissions.py
-        """
-        if hasattr(request, 'auth') and hasattr(request.auth, 'org_associations'):
-            return request.auth.org_associations
-
-    def _elevate_access_if_restricted_application(self, request):
-        # We are authenticating through a restricted application so we
-        # grant the request user global staff access for the duration of
-        # this request.
-        # We DO NOT save this access. This allows us to use existing
-        # logic for permissions checks but still be secure.
-        if hasattr(request, 'auth') and hasattr(request.auth, 'org_associations'):
-            request.user.is_staff = True
 
     def perform_authentication(self, request):
         """
@@ -256,7 +251,7 @@ class CourseGradeView(GradeViewMixin, GenericAPIView):
     # for RestrictedApplications (only). A RestrictedApplication can
     # only call this method if it is allowed to receive a 'grades:read'
     # scope
-    scopes = ['read']
+    #scopes = ['read']
 
     def get(self, request, course_id):
         """
@@ -358,7 +353,7 @@ class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
     # for RestrictedApplications (only). A RestrictedApplication can
     # only call this method if it is allowed to receive a 'grades:read'
     # scope
-    scopes = ['read']
+    #scopes = ['read']
     restricted_oauth_required = True
 
     def get(self, request, course_id):
