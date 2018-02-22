@@ -14,6 +14,7 @@ from mock import MagicMock, patch
 from opaque_keys import InvalidKeyError
 from pytz import UTC
 from provider.oauth2.models import AccessToken
+from oauth2_provider.models import Application
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -21,6 +22,7 @@ from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
 from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
+from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
@@ -365,27 +367,25 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
 
         return base_url
 
-    def test_access_token(self):
-        """ Verify the client credentials grant can be used to obtain an access token whose default scopes allow access
-        to the user info endpoint.
-        """
-        oauth_client = ClientFactory(user=self.user)
+    def test_jwt_access_token(self):
+        """ Verify the client credentials grant can be used to obtain a JWT access token. """
+        application = DOTAdapter().create_confidential_client(
+            name='test dot application',
+            user=self.user,
+            authorization_grant_type=Application.GRANT_CLIENT_CREDENTIALS,
+            redirect_uri=u'https://example.com/edx/redirect',
+            client_id='dot-app-client-id',
+        )
+        scopes = ['read', 'write', 'email']
         data = {
             'grant_type': 'client_credentials',
-            'client_id': oauth_client.client_id,
-            'client_secret': oauth_client.client_secret
+            'client_id': application.client_id,
+            'client_secret': application.client_secret,
+            'scope': ' '.join(scopes),
+            'token_type': 'jwt'
         }
-        response = self.client.post(reverse('oauth2:access_token'), data)
-        self.assertEqual(response.status_code, 200)
 
-        access_token = json.loads(response.content)['access_token']
-        expected = AccessToken.objects.filter(client=oauth_client, user=self.user).first().token
-        self.assertEqual(access_token, expected)
-
-        headers = {
-            'HTTP_AUTHORIZATION': 'Bearer ' + access_token
-        }
-        response = self.client.get(self.get_url(), **headers)
+        response = self.client.get(self.get_url(), data)
         self.assertEqual(response.status_code, 200)
 
 
