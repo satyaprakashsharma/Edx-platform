@@ -25,6 +25,7 @@ from student.tests.factories import CourseEnrollmentFactory, UserFactory
 from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
 from openedx.core.djangoapps.api_admin.models import ApiAccessRequest
 from openedx.core.djangoapps.api_admin.tests.factories import ApiAccessRequestFactory, ApplicationFactory
+from openedx.core.djangoapps.api_admin.tests.test_views import ApiAdminTest
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
@@ -344,7 +345,7 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
 
 
 @unittest.skipUnless(settings.FEATURES.get("ENABLE_OAUTH2_PROVIDER"), "OAuth2 not enabled")
-class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin):
+class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin, ApiAdminTest):
     """ Tests validating the client credentials grant behavior. """
 
     @classmethod
