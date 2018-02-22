@@ -357,7 +357,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
         password = 'abc123'
         self.user = UserFactory(password=password)
         self.client.login(username=self.user.username, password=password)
-        self.url = reverse('api_admin:api-status')
+        self.url = reverse('grades_api:v1:course_grades_all')
 
     def test_get_with_existing_application(self):
         """
