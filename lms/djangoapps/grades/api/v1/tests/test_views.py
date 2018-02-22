@@ -343,6 +343,7 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
         }]
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
 
+
 @unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
 @override_settings(PLATFORM_NAME='edX')
 @ddt.ddt
