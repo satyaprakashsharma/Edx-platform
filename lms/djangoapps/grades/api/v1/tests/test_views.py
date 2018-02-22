@@ -4,6 +4,7 @@ Tests for v1 views
 from datetime import datetime
 import ddt
 import json
+import unittest
 
 from django.core.urlresolvers import reverse
 from django.conf import settings
