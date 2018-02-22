@@ -7,6 +7,7 @@ import json
 import unittest
 
 from django.core.urlresolvers import reverse
+from django.test import TestCase
 from django.conf import settings
 from django.test.utils import override_settings
 from mock import MagicMock, patch
