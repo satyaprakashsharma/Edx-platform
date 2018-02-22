@@ -6,6 +6,7 @@ import ddt
 import json
 
 from django.core.urlresolvers import reverse
+from django.conf import settings
 from django.test.utils import override_settings
 from mock import MagicMock, patch
 from opaque_keys import InvalidKeyError
