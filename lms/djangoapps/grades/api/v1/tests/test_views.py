@@ -351,13 +351,29 @@ class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
     """
     Tests validating the client credentials grant behavior.
     """
+    @classmethod
+    def setUpClass(cls):
+        super(CourseGradeAllUsersViewClientCredentialsTest, cls).setUpClass()
+        cls.namespaced_url = 'grades_api:v1:coursegrades_all'
 
     def setUp(self):
         super(CourseGradeAllUsersViewClientCredentialsTest, self).setUp()
         password = 'abc123'
         self.user = UserFactory(password=password)
         self.client.login(username=self.user.username, password=password)
-        self.url = reverse('gradesapi_v1:course-allgrades')
+
+    def get_url(self):
+        """
+        Helper function to create the url
+        """
+        base_url = reverse(
+            self.namespaced_url,
+            kwargs={
+                'course_id': self.course_key,
+            }
+        )
+
+        return base_url
 
     def test_get_with_existing_application(self):
         """
@@ -366,7 +382,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
         """
         ApiAccessRequestFactory(user=self.user, status=ApiAccessRequest.APPROVED)
         application = ApplicationFactory(user=self.user)
-        response = self.client.get(self.url)
+        response = self.client.get(self.get_url)
         self.assertEqual(response.status_code, 200)
 
 
