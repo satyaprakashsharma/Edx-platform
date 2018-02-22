@@ -340,7 +340,7 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
 
 
 @unittest.skipUnless(settings.FEATURES.get("ENABLE_OAUTH2_PROVIDER"), "OAuth2 not enabled")
-class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, TestCase, GradeViewTestMixin, APITestCase):
+class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, TestCase, GradeViewTestMixin):
     """ Tests validating the client credentials grant behavior. """
 
     @classmethod
