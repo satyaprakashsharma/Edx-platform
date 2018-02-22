@@ -253,7 +253,7 @@ class CourseGradeView(GradeViewMixin, GenericAPIView):
         return Response(response)
 
 
-class CourseGradeAllUsersView(GradeViewMixin, RestrictBulkGradeView, GenericAPIView):
+class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
     """
     **Use Case**
 
