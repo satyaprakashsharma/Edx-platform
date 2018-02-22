@@ -354,7 +354,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
     @classmethod
     def setUpClass(cls):
         super(CourseGradeAllUsersViewClientCredentialsTest, cls).setUpClass()
-        cls.namespaced_url = 'grades_api:v1:coursegrades_all'
+        cls.namespaced_url = 'grades_api:v1+coursegrades_all'
 
     def setUp(self):
         super(CourseGradeAllUsersViewClientCredentialsTest, self).setUp()
