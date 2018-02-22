@@ -165,6 +165,18 @@ class GradeViewMixin(DeveloperErrorViewMixin):
         super(GradeViewMixin, self).perform_authentication(request)
         if request.user.is_anonymous():
             raise AuthenticationFailed
+
+
+class RestrictBulkGradeView(DeveloperErrorViewMixin):
+    """
+    Class to check grant type of the token 
+    """
+
+    def perform_client_credentials_check(self, request):
+        """
+        Ensures the token is client credentials grant
+        """
+	    super(RestrictBulkGradeView, self).perform_client_credentials_check(request)
         required_token = request.META.get('HTTP_AUTHORIZATION')
         if required_token:
             applicationid = dot_models.AccessToken.objects.get(token=required_token.split()[1]).application
@@ -173,7 +185,7 @@ class GradeViewMixin(DeveloperErrorViewMixin):
         else:
                 raise PermissionDenied
 
-
+				
 class CourseGradeView(GradeViewMixin, GenericAPIView):
     """
     **Use Case**
@@ -260,7 +272,7 @@ class CourseGradeView(GradeViewMixin, GenericAPIView):
         return Response(response)
 
 
-class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
+class CourseGradeAllUsersView(GradeViewMixin, RestrictBulkGradeView, GenericAPIView):
     """
     **Use Case**
 
