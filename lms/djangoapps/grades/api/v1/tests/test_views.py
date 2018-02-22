@@ -23,6 +23,7 @@ from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactor
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
 from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
+from openedx.core.djangoapps.api_admin.models import ApiAccessRequest
 from openedx.core.djangoapps.api_admin.tests.factories import ApiAccessRequestFactory, ApplicationFactory
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
