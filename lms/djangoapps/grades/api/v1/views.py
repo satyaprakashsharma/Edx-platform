@@ -167,25 +167,6 @@ class GradeViewMixin(DeveloperErrorViewMixin):
             raise AuthenticationFailed
 
 
-class RestrictBulkGradeView(DeveloperErrorViewMixin):
-    """
-    Class to check grant type of the token
-    """
-
-    def perform_client_credentials_check(self, request):
-        """
-        Ensures the token is client credentials grant
-        """
-        super(RestrictBulkGradeView, self).perform_client_credentials_check(request)
-        required_token = request.META.get('HTTP_AUTHORIZATION')
-        if required_token:
-            applicationid = dot_models.AccessToken.objects.get(token=required_token.split()[1]).application
-            if applicationid.get_authorization_grant_type_display() is not 'Client credentials':
-                raise PermissionDenied
-        else:
-                raise PermissionDenied
-
-
 class CourseGradeView(GradeViewMixin, GenericAPIView):
     """
     **Use Case**
@@ -333,8 +314,6 @@ class CourseGradeAllUsersView(GradeViewMixin, RestrictBulkGradeView, GenericAPIV
         }]
     """
 
-    #restricted_oauth_required = True
-
     def get(self, request, course_id):
         """
             Gets a course progress status.
@@ -346,6 +325,14 @@ class CourseGradeAllUsersView(GradeViewMixin, RestrictBulkGradeView, GenericAPIV
             Return:
                 A JSON serialized representation of the requesting user's current grade status.
         """
+        required_token = request.META.get('HTTP_AUTHORIZATION')
+        if required_token:
+            applicationid = dot_models.AccessToken.objects.get(token=required_token.split()[1]).application
+            if applicationid.get_authorization_grant_type_display() is not 'Client credentials':
+                raise PermissionDenied
+        else:
+                raise PermissionDenied
+
         should_calculate_grade = request.GET.get('calculate')
         use_email = request.GET.get('use_email', None)
 
