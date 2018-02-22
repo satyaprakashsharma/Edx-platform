@@ -25,7 +25,7 @@ def on_access_token_presave(sender, instance, *args, **kwargs):  # pylint: disab
     We do this as a pre-save hook on the ORM
     """
     if settings.FEATURES.get('AUTO_EXPIRE_RESTRICTED_ACCESS_TOKENS', False):
-        is_application_restricted = RestrictedApplication.is_token_a_restricted_application(instance)
+        is_application_restricted = RestrictedApplication.objects.filter(application=instance.application).exists()
         if is_application_restricted:
             RestrictedApplication.set_access_token_as_expired(instance)
 
