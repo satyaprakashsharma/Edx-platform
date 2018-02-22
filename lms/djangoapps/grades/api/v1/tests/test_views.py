@@ -20,6 +20,7 @@ from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
 from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
+from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase, TEST_DATA_SPLIT_MODULESTORE
