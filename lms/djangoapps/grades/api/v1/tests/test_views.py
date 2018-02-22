@@ -343,40 +343,29 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
         }]
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
 
-
-@unittest.skipUnless(settings.FEATURES.get("ENABLE_OAUTH2_PROVIDER"), "OAuth2 not enabled")
-class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin, ApiAdminTest):
-    """ Tests validating the client credentials grant behavior. """
-
-    @classmethod
-    def setUpClass(cls):
-        super(CourseGradeAllUsersViewClientCredentialsTest, cls).setUpClass()
-        cls.namespaced_url = 'grades_api:v1:course_grades_all'
+@unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
+@override_settings(PLATFORM_NAME='edX')
+@ddt.ddt
+class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
+    """
+    Tests validating the client credentials grant behavior.
+    """
 
     def setUp(self):
         super(CourseGradeAllUsersViewClientCredentialsTest, self).setUp()
-        self.user = UserFactory()
+        password = 'abc123'
+        self.user = UserFactory(password=password)
+        self.client.login(username=self.user.username, password=password)
+        self.url = reverse('api_admin:api-status')
 
-    def get_url(self):
+    def test_get_with_existing_application(self):
         """
-        Helper function to create the url
-        """
-        base_url = reverse(
-            self.namespaced_url,
-            kwargs={
-                'course_id': self.course_key,
-            }
-        )
-
-        return base_url
-
-    def test_jwt_access_token(self):
-        """
-        Verify the client credentials grant can be used to obtain a JWT access token.
+        Verify that if the user has created their client credentials, they
+        are shown on the status page.
         """
         ApiAccessRequestFactory(user=self.user, status=ApiAccessRequest.APPROVED)
         application = ApplicationFactory(user=self.user)
-        response = self.client.get(self.get_url())
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
 
 
