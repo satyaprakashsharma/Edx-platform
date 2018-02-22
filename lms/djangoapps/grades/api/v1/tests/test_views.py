@@ -368,24 +368,12 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
         return base_url
 
     def test_jwt_access_token(self):
-        """ Verify the client credentials grant can be used to obtain a JWT access token. """
-        application = DOTAdapter().create_confidential_client(
-            name='test dot application',
-            user=self.user,
-            authorization_grant_type=Application.GRANT_CLIENT_CREDENTIALS,
-            redirect_uri=u'https://example.com/edx/redirect',
-            client_id='dot-app-client-id',
-        )
-        scopes = ['read', 'write', 'email']
-        data = {
-            'grant_type': 'client_credentials',
-            'client_id': application.client_id,
-            'client_secret': application.client_secret,
-            'scope': ' '.join(scopes),
-            'token_type': 'jwt'
-        }
-
-        response = self.client.get(self.get_url(), data)
+        """
+        Verify the client credentials grant can be used to obtain a JWT access token.
+        """
+        ApiAccessRequestFactory(user=self.user, status=ApiAccessRequest.APPROVED)
+        application = ApplicationFactory(user=self.user)
+        response = self.client.get(self.get_url())
         self.assertEqual(response.status_code, 200)
 
 
