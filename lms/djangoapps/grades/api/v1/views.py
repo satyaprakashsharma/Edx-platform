@@ -8,7 +8,7 @@ from django.http import Http404
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.keys import CourseKey
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.response import Response
 from oauth2_provider import models as dot_models
@@ -117,23 +117,15 @@ class GradeViewMixin(DeveloperErrorViewMixin):
         """
         try:
             course = courses[0]
-            required_token = request.META.get('HTTP_AUTHORIZATION').split()[1]
-            applicationid = dot_models.AccessToken.objects.get(token=required_token).application
-            if applicationid.get_authorization_grant_type_display() == 'Client credentials':
-                return enrollment_data.get_user_enrollments(
-                    course.id, serialize=False
-                )
-            else:
-                return self.make_error_response(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    developer_message='The is not client_credentils grant.',
-                    error_code='token does not have the required grant'
-                )
+
+            return enrollment_data.get_user_enrollments(
+                course.id, serialize=False
+            )
         except:
             return self.make_error_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 developer_message='The course does not have any enrollments.',
-                error_code='enrollments not found'
+                error_code='no_course_enrollments'
             )
 
     def _read_or_create_grade(self, user, course, calculate=None, use_email=None):
@@ -173,6 +165,10 @@ class GradeViewMixin(DeveloperErrorViewMixin):
         super(GradeViewMixin, self).perform_authentication(request)
         if request.user.is_anonymous():
             raise AuthenticationFailed
+        required_token = request.META.get('HTTP_AUTHORIZATION').split()[1]
+        applicationid = dot_models.AccessToken.objects.get(token=required_token).application
+        if applicationid.get_authorization_grant_type_display() is not 'Client credentials':
+            raise PermissionDenied
 
 
 class CourseGradeView(GradeViewMixin, GenericAPIView):
