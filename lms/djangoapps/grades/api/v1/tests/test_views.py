@@ -15,6 +15,7 @@ from opaque_keys import InvalidKeyError
 from pytz import UTC
 from provider.oauth2.models import AccessToken
 from oauth2_provider.models import Application
+from oauth2_provider.tests import BaseTest
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -344,7 +345,7 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
 
 
 @unittest.skipUnless(settings.FEATURES.get("ENABLE_OAUTH2_PROVIDER"), "OAuth2 not enabled")
-class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin):
+class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin, BaseTest):
     """ Tests validating the client credentials grant behavior. """
 
     @classmethod
