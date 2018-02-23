@@ -15,7 +15,7 @@ from opaque_keys import InvalidKeyError
 from pytz import UTC
 from provider.oauth2.models import AccessToken
 from oauth2_provider.models import Application
-from oauth2_provider.tests import BaseTest
+from oauth2_provider.tests.test_client_credential  import BaseTest
 from rest_framework import status
 from rest_framework.test import APITestCase
 
