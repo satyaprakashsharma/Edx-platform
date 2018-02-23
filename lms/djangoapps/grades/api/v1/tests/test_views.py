@@ -25,7 +25,6 @@ from student.tests.factories import CourseEnrollmentFactory, UserFactory
 from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
 from openedx.core.djangoapps.api_admin.models import ApiAccessRequest
 from openedx.core.djangoapps.api_admin.tests.factories import ApiAccessRequestFactory, ApplicationFactory
-from openedx.core.djangoapps.api_admin.tests.test_views import ApiAdminTest
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
@@ -344,45 +343,39 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
 
 
-@unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
-@override_settings(PLATFORM_NAME='edX')
-@ddt.ddt
-class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
-    """
-    Tests validating the client credentials grant behavior.
-    """
+@unittest.skipUnless(settings.FEATURES.get("ENABLE_OAUTH2_PROVIDER"), "OAuth2 not enabled")
+class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin):
+    """ Tests validating the client credentials grant behavior. """
+
     @classmethod
     def setUpClass(cls):
         super(CourseGradeAllUsersViewClientCredentialsTest, cls).setUpClass()
-        cls.namespaced_url = 'grades_api:v1:coursegrades_all'
+        cls.namespaced_url = 'grades_api:v1:course_grades_all'
 
     def setUp(self):
         super(CourseGradeAllUsersViewClientCredentialsTest, self).setUp()
-        password = 'abc123'
-        self.user = UserFactory(password=password)
-        self.client.login(username=self.user.username, password=password)
+        self.user = UserFactory()
 
-    def get_url(self, course_keys=None):
+    def get_url(self):
         """
         Helper function to create the url
         """
         base_url = reverse(
             self.namespaced_url,
             kwargs={
-                'course_id': course_key or self.course_key,
+                'course_id': self.course_key,
             }
         )
 
         return base_url
 
-    def test_get_with_existing_application(self):
+    def test_jwt_access_token(self):
         """
-        Verify that if the user has created their client credentials, they
-        are shown on the status page.
+        Verify the client credentials grant can be used to obtain a JWT access token.
         """
         ApiAccessRequestFactory(user=self.user, status=ApiAccessRequest.APPROVED)
         application = ApplicationFactory(user=self.user)
-        response = self.client.get(self.get_url)
+        response = self.client.get(self.get_url())
         self.assertEqual(response.status_code, 200)
 
 
