@@ -354,7 +354,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
     @classmethod
     def setUpClass(cls):
         super(CourseGradeAllUsersViewClientCredentialsTest, cls).setUpClass()
-        cls.namespaced_url = 'grades_api:v1+coursegrades_all'
+        cls.namespaced_url = 'grades_api:v1:coursegrades_all'
 
     def setUp(self):
         super(CourseGradeAllUsersViewClientCredentialsTest, self).setUp()
@@ -362,14 +362,14 @@ class CourseGradeAllUsersViewClientCredentialsTest(ApiAdminTest):
         self.user = UserFactory(password=password)
         self.client.login(username=self.user.username, password=password)
 
-    def get_url(self):
+    def get_url(self, course_keys=None):
         """
         Helper function to create the url
         """
         base_url = reverse(
             self.namespaced_url,
             kwargs={
-                'course_id': self.course_key,
+                'course_id': course_key or self.course_key,
             }
         )
 
