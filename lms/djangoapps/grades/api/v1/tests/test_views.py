@@ -407,7 +407,7 @@ class CourseGradeAllUsersViewClientCredentials2Test(BaseTest):
             kwargs={
                 'course_id': self.course_key,
             }
-        )request = self.factory.get(self.get_url(), **auth_headers)
+        )
 
         return base_url
 
