@@ -396,6 +396,45 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
     """
 
 
+class CourseGradeAllUsersViewClientCredentials2Test(BaseTest):
+
+    def get_url(self):
+        """
+        Helper function to create the url
+        """
+        base_url = reverse(
+            'grades_api:v1:course_grades_all',
+            kwargs={
+                'course_id': self.course_key,
+            }
+        )request = self.factory.get(self.get_url(), **auth_headers)
+
+        return base_url
+
+    def test_client_credential_access_allowed_2(self):
+        """
+        Request an access token using Client Credential Flow
+        """
+        token_request_data = {
+            'grant_type': 'client_credentials',
+        }
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        self.assertEqual(response.status_code, 200)
+
+        content = json.loads(response.content.decode("utf-8"))
+        access_token = content['access_token']
+
+        # use token to access the resource
+        auth_headers = {
+            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
+        }
+        #equest = self.factory.get("/fake-resource", **auth_headers)
+        request = self.factory.get(self.get_url(), **auth_headers)
+
+
+
 @ddt.ddt
 class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
     """
