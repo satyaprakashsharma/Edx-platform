@@ -403,7 +403,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
         auth_headers = {
             'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
         }
-        request = self.factory.get("/fake-resource", **auth_headers)
+        request = self.factory.get(self.get_url(), **auth_headers)
 
 
 @ddt.ddt
