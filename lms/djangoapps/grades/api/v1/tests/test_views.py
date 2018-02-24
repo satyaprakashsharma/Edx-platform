@@ -374,10 +374,36 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
         """
         Verify the client credentials grant can be used to obtain a JWT access token.
         """
-        ApiAccessRequestFactory(user=self.user, status=ApiAccessRequest.APPROVED)
-        application = ApplicationFactory(user=self.user)
-        response = self.client.get(self.get_url())
+
+        self.application.delete()
+        self.application = Application(
+            name="test_client_credentials_app",
+            user=self.dev_user,
+            client_type=Application.CLIENT_CONFIDENTIAL,
+            authorization_grant_type=Application.GRANT_PASSWORD,
+        )
+        self.application.save()
+
+        token_request_data = {
+            'grant_type': 'password',
+            'username': 'test_user',
+            'password': '123456'
+        }
+        auth_headers = self.get_basic_auth_header(
+            urllib.quote_plus(self.application.client_id),
+            urllib.quote_plus(self.application.client_secret))
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
         self.assertEqual(response.status_code, 200)
+
+        content = json.loads(response.content.decode("utf-8"))
+        access_token = content['access_token']
+
+        # use token to access the resource
+        auth_headers = {
+            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
+        }
+        request = self.factory.get("/fake-resource", **auth_headers)
 
 
 @ddt.ddt
