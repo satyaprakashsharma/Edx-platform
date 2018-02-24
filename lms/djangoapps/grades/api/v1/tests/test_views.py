@@ -375,9 +375,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
         return base_url
     """
     def test_client_credential_access_allowed2(self):
-        """
-        #Request an access token using Client Credential Flow
-        """
+
         token_request_data = {
             'grant_type': 'client_credentials',
         }
