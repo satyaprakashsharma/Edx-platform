@@ -5,6 +5,10 @@ from datetime import datetime
 import ddt
 import json
 import unittest
+try:
+    import urllib.parse as urllib
+except ImportError:
+    import urllib
 
 from django.core.urlresolvers import reverse
 from django.test import TestCase
