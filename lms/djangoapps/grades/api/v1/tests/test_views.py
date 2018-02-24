@@ -434,7 +434,6 @@ class CourseGradeAllUsersViewClientCredentials2Test(BaseTest):
         request = self.factory.get(self.get_url(), **auth_headers)
 
 
-
 @ddt.ddt
 class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
     """
