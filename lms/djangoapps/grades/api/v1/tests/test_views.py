@@ -374,39 +374,6 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
 
         return base_url
 
-    def test_jwt_access_token(self):
-        """
-        Verify the client credentials grant can be used to obtain a JWT access token.
-        """
-
-        self.application.delete()
-        self.application = Application(
-            name="test_client_credentials_app",
-            user=self.dev_user,
-            client_type=Application.CLIENT_CONFIDENTIAL,
-            authorization_grant_type=Application.GRANT_PASSWORD,
-        )
-        self.application.save()
-
-        token_request_data = {
-            'grant_type': 'client_credentials',
-        }
-        auth_headers = self.get_basic_auth_header(
-            urllib.quote_plus(self.application.client_id),
-            urllib.quote_plus(self.application.client_secret))
-
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
-
-        content = json.loads(response.content.decode("utf-8"))
-        access_token = content['access_token']
-
-        # use token to access the resource
-        auth_headers = {
-            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
-        }
-        request = self.factory.get(self.get_url(), **auth_headers)
-
     def test_client_credential_access_allowed(self):
         """
         Request an access token using Client Credential Flow
@@ -428,6 +395,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
         }
         request = self.factory.get(self.get_url(), **auth_headers)
         self.assertEqual(response.status_code, 200)
+
 
 @ddt.ddt
 class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
