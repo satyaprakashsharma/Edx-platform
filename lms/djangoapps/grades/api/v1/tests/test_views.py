@@ -389,9 +389,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
         self.application.save()
 
         token_request_data = {
-            'grant_type': 'password',
-            'username': 'test_user',
-            'password': '123456'
+            'grant_type': 'client_credentials',
         }
         auth_headers = self.get_basic_auth_header(
             urllib.quote_plus(self.application.client_id),
