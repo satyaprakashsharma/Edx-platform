@@ -19,7 +19,7 @@ from opaque_keys import InvalidKeyError
 from pytz import UTC
 from provider.oauth2.models import AccessToken
 from oauth2_provider.models import Application
-from oauth2_provider.tests.test_client_credential import BaseTest
+from oauth2_provider.tests.test_client_credential import BaseTest, ResourceView
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -432,7 +432,9 @@ class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin
         }
         #equest = self.factory.get("/fake-resource", **auth_headers)
         request = self.factory.get(self.get_url(), **auth_headers)
-        self.assertEqual(request.status_code, 200)
+        view = ResourceView.as_view()
+        response = view(request)
+        self.assertEqual(response, "This is a protected resource")
 
 
 @ddt.ddt
