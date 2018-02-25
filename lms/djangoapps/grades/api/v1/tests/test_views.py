@@ -396,7 +396,7 @@ class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, Grad
     """
 
 
-class CourseGradeAllUsersViewClientCredentials2Test(BaseTest):
+class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin):
 
     def get_url(self):
         """
