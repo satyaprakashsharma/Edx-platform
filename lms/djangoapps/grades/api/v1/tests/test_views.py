@@ -432,6 +432,7 @@ class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin
         }
         #equest = self.factory.get("/fake-resource", **auth_headers)
         request = self.factory.get(self.get_url(), **auth_headers)
+        self.assertEqual(response.status_code, 200)
 
 
 @ddt.ddt
