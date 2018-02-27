@@ -380,6 +380,7 @@ class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin
         auth_headers = {
             'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
         }
+        request = self.client.get(self.get_url(), **auth_headers)
         self.assertEqual(response.status_code, 200)
 
 
