@@ -1,666 +1,395 @@
-"""
-Tests for v1 views
-"""
+""" API v1 views. """
+import logging
 from datetime import datetime
-import ddt
-import json
-import unittest
 
-from django.core.urlresolvers import reverse
 from django.conf import settings
-from django.test.utils import override_settings
-from mock import MagicMock, patch
+from django.contrib.auth import get_user_model
+from django.http import Http404
 from opaque_keys import InvalidKeyError
-from pytz import UTC
-from oauth2_provider.models import Application
-from oauth2_provider.tests.test_client_credential import BaseTest, ResourceView
+from opaque_keys.edx.keys import CourseKey
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
+from rest_framework.generics import GenericAPIView, ListAPIView
+from rest_framework.response import Response
+from oauth2_provider import models as dot_models
+from courseware.access import has_access
+from lms.djangoapps.ccx.utils import prep_course_for_grading
+from lms.djangoapps.courseware import courses
+from lms.djangoapps.courseware.exceptions import CourseAccessRedirect
+from lms.djangoapps.grades.api.serializers import GradingPolicySerializer
+from lms.djangoapps.grades.new.course_grade import CourseGrade, CourseGradeFactory
+from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
+from openedx.core.lib.api.paginators import NamespacedPageNumberPagination
+from openedx.core.lib.api.permissions import IsStaffOrOwner
+from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin, view_auth_classes
+from enrollment import data as enrollment_data
+from student.roles import CourseStaffRole
 
-from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
-from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
-from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
-from student.tests.factories import CourseEnrollmentFactory, UserFactory
-from openedx.core.djangoapps.oauth_dispatch.tests import mixins
-from xmodule.modulestore import ModuleStoreEnum
-from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
-from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase, TEST_DATA_SPLIT_MODULESTORE
+log = logging.getLogger(__name__)
+USER_MODEL = get_user_model()
 
 
-class GradeViewTestMixin(SharedModuleStoreTestCase):
+@view_auth_classes()
+class GradeViewMixin(DeveloperErrorViewMixin):
     """
-    Mixin class for grades related view tests
-
-    The following tests assume that the grading policy is the edX default one:
-    {
-        "GRADER": [
-            {
-                "drop_count": 2,
-                "min_count": 12,
-                "short_label": "HW",
-                "type": "Homework",
-                "weight": 0.15
-            },
-            {
-                "drop_count": 2,
-                "min_count": 12,
-                "type": "Lab",
-                "weight": 0.15
-            },
-            {
-                "drop_count": 0,
-                "min_count": 1,
-                "short_label": "Midterm",
-                "type": "Midterm Exam",
-                "weight": 0.3
-            },
-            {
-                "drop_count": 0,
-                "min_count": 1,
-                "short_label": "Final",
-                "type": "Final Exam",
-                "weight": 0.4
-            }
-        ],
-        "GRADE_CUTOFFS": {
-            "Pass": 0.5
-        }
-    }
+    Mixin class for Grades related views.
     """
-    MODULESTORE = TEST_DATA_SPLIT_MODULESTORE
 
-    @classmethod
-    def setUpClass(cls):
-        super(GradeViewTestMixin, cls).setUpClass()
+    pagination_class = NamespacedPageNumberPagination
 
-        cls.course = CourseFactory.create(display_name='test course', run="Testing_course")
-
-        chapter = ItemFactory.create(
-            category='chapter',
-            parent_location=cls.course.location,
-            display_name="Chapter 1",
-        )
-        # create a problem for each type and minimum count needed by the grading policy
-        # A section is not considered if the student answers less than "min_count" problems
-        for grading_type, min_count in (("Homework", 12), ("Lab", 12), ("Midterm Exam", 1), ("Final Exam", 1)):
-            for num in xrange(min_count):
-                section = ItemFactory.create(
-                    category='sequential',
-                    parent_location=chapter.location,
-                    due=datetime(2013, 9, 18, 11, 30, 00),
-                    display_name='Sequential {} {}'.format(grading_type, num),
-                    format=grading_type,
-                    graded=True,
-                )
-                vertical = ItemFactory.create(
-                    category='vertical',
-                    parent_location=section.location,
-                    display_name='Vertical {} {}'.format(grading_type, num),
-                )
-                ItemFactory.create(
-                    category='problem',
-                    parent_location=vertical.location,
-                    display_name='Problem {} {}'.format(grading_type, num),
-                )
-
-        cls.course_key = cls.course.id
-
-        cls.password = 'test'
-        cls.student = UserFactory(username='dummy', password=cls.password)
-        cls.other_student = UserFactory(username='foo', password=cls.password)
-        cls.other_user = UserFactory(username='bar', password=cls.password)
-        cls.staff = StaffFactory(course_key=cls.course_key, password=cls.password)
-        cls.global_staff = GlobalStaffFactory.create()
-        date = datetime(2013, 1, 22, tzinfo=UTC)
-        for user in (cls.student, cls.other_student,):
-            CourseEnrollmentFactory(
-                course_id=cls.course.id,
-                user=user,
-                created=date,
+    def _get_course(self, request, course_key_string, user, access_action):
+        """
+        Returns the course for the given course_key_string after
+        verifying the requested access to the course by the given user.
+        """
+        try:
+            course_key = CourseKey.from_string(course_key_string)
+        except InvalidKeyError:
+            return self.make_error_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                developer_message='The provided course key cannot be parsed.',
+                error_code='invalid_course_key'
             )
 
-    def setUp(self):
-        super(GradeViewTestMixin, self).setUp()
-        self.client.login(username=self.student.username, password=self.password)
-
-    @classmethod
-    def _create_test_course_with_default_grading_policy(cls, display_name, run):
-        course = CourseFactory.create(display_name=display_name, run=run)
-
-        chapter = ItemFactory.create(
-            category='chapter',
-            parent_location=course.location,
-            display_name="Chapter 1",
+        try:
+            return courses.get_course_with_access(
+                user,
+                access_action,
+                course_key,
+                check_if_enrolled=True,
+            )
+        except Http404:
+            log.info('Course with ID "%s" not found', course_key_string)
+        except CourseAccessRedirect:
+            log.info('User %s does not have access to course with ID "%s"', user.username, course_key_string)
+        return self.make_error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            developer_message='The user, the course or both do not exist.',
+            error_code='user_or_course_does_not_exist',
         )
-        # create a problem for each type and minimum count needed by the grading policy
-        # A section is not considered if the student answers less than "min_count" problems
-        for grading_type, min_count in (("Homework", 12), ("Lab", 12), ("Midterm Exam", 1), ("Final Exam", 1)):
-            for num in xrange(min_count):
-                section = ItemFactory.create(
-                    category='sequential',
-                    parent_location=chapter.location,
-                    due=datetime(2017, 12, 18, 11, 30, 00),
-                    display_name='Sequential {} {}'.format(grading_type, num),
-                    format=grading_type,
-                    graded=True,
-                )
-                vertical = ItemFactory.create(
-                    category='vertical',
-                    parent_location=section.location,
-                    display_name='Vertical {} {}'.format(grading_type, num),
-                )
-                ItemFactory.create(
-                    category='problem',
-                    parent_location=vertical.location,
-                    display_name='Problem {} {}'.format(grading_type, num),
-                )
 
-        return course
+    def _get_effective_user(self, request, course):
+        """
+        Returns the user object corresponding to the request's 'username' parameter,
+        or the current request.user if no 'username' was provided.
+
+        Verifies that the request.user has access to the requested users's grades.
+        Returns a 403 error response if access is denied, or a 404 error response if the user does not exist.
+        """
+
+        # Use the request user's if none provided.
+        if 'username' in request.GET:
+            username = request.GET.get('username')
+        else:
+            username = request.user.username
+
+        if request.user.username == username:
+            # Any user may request her own grades
+            return request.user
+
+        # Only a user with staff access may request grades for a user other than herself.
+        if not has_access(request.user, CourseStaffRole.ROLE, course):
+            log.info(
+                'User %s tried to access the grade for user %s.',
+                request.user.username,
+                username
+            )
+            return self.make_error_response(
+                status_code=status.HTTP_403_FORBIDDEN,
+                developer_message='The user requested does not match the logged in user.',
+                error_code='user_mismatch'
+            )
+
+        try:
+            return USER_MODEL.objects.get(username=username)
+
+        except USER_MODEL.DoesNotExist:
+            return self.make_error_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                developer_message='The user matching the requested username does not exist.',
+                error_code='user_does_not_exist'
+            )
+
+    def _get_all_users(self, request, courses):
+        """
+        Validates course enrollments and returns the users course enrollment data
+        Returns a 404 error response if the user course enrollments does not exist.
+        """
+        try:
+            course = courses[0]
+
+            return enrollment_data.get_user_enrollments(
+                course.id, serialize=False
+            )
+        except:
+            return self.make_error_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                developer_message='The course does not have any enrollments.',
+                error_code='no_course_enrollments'
+            )
+
+    def _read_or_create_grade(self, user, course, calculate=None, use_email=None):
+        """
+        Read or create a new CourseGrade for the specified user and course.
+        """
+        if calculate is not None:
+            course_grade = CourseGradeFactory().create(user, course, read_only=False)
+        else:
+            course_grade = CourseGradeFactory().get_persisted(user, course)
+
+        # Handle the case of a course grade not existing,
+        # return a Zero course grade
+        if not course_grade:
+            course_grade = CourseGrade(user, course, None)
+            course_grade._percent = 0.0
+            course_grade._letter_grade = None
+            course_grade._passed = False
+
+        if use_email is not None:
+            user = user.email
+        else:
+            user = user.username
+
+        return {
+            'user': user,
+            'course_key': str(course.id),
+            'passed': course_grade.passed,
+            'percent': course_grade.percent,
+            'letter_grade': course_grade.letter_grade,
+        }
+
+    def perform_authentication(self, request):
+        """
+        Ensures that the user is authenticated (e.g. not an AnonymousUser), unless DEBUG mode is enabled.
+        """
+        super(GradeViewMixin, self).perform_authentication(request)
+        if request.user.is_anonymous():
+            raise AuthenticationFailed
 
 
-@ddt.ddt
-class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
+class CourseGradeView(GradeViewMixin, GenericAPIView):
     """
-    Tests for grades related to a course
-        i.e. /api/grades/v1/course_grade/{course_id}/users/{username}=(student)
-    """
+    **Use Case**
 
-    @classmethod
-    def setUpClass(cls):
-        super(CurrentGradeViewTest, cls).setUpClass()
-        cls.namespaced_url = 'grades_api:v1:user_grade_detail'
+        * Get the current course grades for a user in a course.
 
-    def setUp(self):
-        super(CurrentGradeViewTest, self).setUp()
+        The currently logged-in user may request her own enrolled user's grades.
 
-    def get_url(self, username):
-        """
-        Helper function to create the url
-        """
-        base_url = reverse(
-            self.namespaced_url,
-            kwargs={
-                'course_id': self.course_key,
-            }
-        )
-        return "{0}?username={1}".format(base_url, username)
+    **Example Request**
 
-    def test_anonymous(self):
-        """
-        Test that an anonymous user cannot access the API and an error is received.
-        """
-        self.client.logout()
-        resp = self.client.get(self.get_url(self.student.username))
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        GET /api/grades/v1/course_grade/{course_id}/users/?username={username}
 
-    def test_self_get_grade(self):
-        """
-        Test that a user can successfully request her own grade.
-        """
-        resp = self.client.get(self.get_url(self.student.username))
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+    **GET Parameters**
 
-    def test_nonexistent_user(self):
-        """
-        Test that a request for a nonexistent username returns an error.
-        """
-        self.client.logout()
-        self.client.login(username=self.staff.username, password=self.password)
-        resp = self.client.get(self.get_url('IDoNotExist'))
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn('error_code', resp.data)  # pylint: disable=no-member
-        self.assertEqual(resp.data['error_code'], 'user_does_not_exist')  # pylint: disable=no-member
+        A GET request may include the following parameters.
 
-    def test_other_get_grade(self):
-        """
-        Test that if a user requests the grade for another user, she receives an error.
-        """
-        self.client.logout()
-        self.client.login(username=self.other_student.username, password=self.password)
-        resp = self.client.get(self.get_url(self.student.username))
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn('error_code', resp.data)  # pylint: disable=no-member
-        self.assertEqual(resp.data['error_code'], 'user_mismatch')  # pylint: disable=no-member
+        * course_id: (required) A string representation of a Course ID.
+        * username: (optional) A string representation of a user's username.
+          Defaults to the currently logged-in user's username.
 
-    def test_self_get_grade_not_enrolled(self):
-        """
-        Test that a user receives an error if she requests
-        her own grade in a course where she is not enrolled.
-        """
-        # a user not enrolled in the course cannot request her grade
-        self.client.logout()
-        self.client.login(username=self.other_user.username, password=self.password)
-        resp = self.client.get(self.get_url(self.other_user.username))
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn('error_code', resp.data)  # pylint: disable=no-member
-        self.assertEqual(
-            resp.data['error_code'],  # pylint: disable=no-member
-            'user_or_course_does_not_exist'
-        )
+    **GET Response Values**
 
-    def test_no_grade(self):
-        """
-        Test the grade for a user who has not answered any test.
-        """
-        resp = self.client.get(self.get_url(self.student.username))
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        expected_data = [{
-            'user': self.student.username,
-            'course_key': str(self.course_key),
-            'passed': False,
-            'percent': 0.0,
-            'letter_grade': None
+        If the request for information about the course grade
+        is successful, an HTTP 200 "OK" response is returned.
+
+        The HTTP 200 response has the following values.
+
+        * username: A string representation of a user's username passed in the request.
+
+        * course_id: A string representation of a Course ID.
+
+        * passed: Boolean representing whether the course has been
+                  passed according the course's grading policy.
+
+        * percent: A float representing the overall grade for the course
+
+        * letter_grade: A letter grade as defined in grading_policy (e.g. 'A' 'B' 'C' for 6.002x) or None
+
+
+    **Example GET Response**
+
+        [{
+            "username": "bob",
+            "course_key": "course-v1:edX+DemoX+Demo_Course",
+            "passed": false,
+            "percent": 0.03,
+            "letter_grade": None,
         }]
 
-        self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
+    """
 
-    def test_wrong_course_key(self):
+    def get(self, request, course_id):
         """
-        Test that a request for an invalid course key returns an error.
+        Gets a course progress status.
+
+        Args:
+            request (Request): Django request object.
+            course_id (string): URI element specifying the course location.
+
+        Return:
+            A JSON serialized representation of the requesting user's current grade status.
         """
-        def mock_from_string(*args, **kwargs):  # pylint: disable=unused-argument
-            """Mocked function to always raise an exception"""
-            raise InvalidKeyError('foo', 'bar')
+        should_calculate_grade = request.GET.get('calculate')
+        use_email = request.GET.get('use_email', None)
 
-        with patch('opaque_keys.edx.keys.CourseKey.from_string', side_effect=mock_from_string):
-            resp = self.client.get(self.get_url(self.student.username))
+        course = self._get_course(request, course_id, request.user, 'load')
 
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn('error_code', resp.data)  # pylint: disable=no-member
-        self.assertEqual(
-            resp.data['error_code'],  # pylint: disable=no-member
-            'invalid_course_key'
-        )
+        if isinstance(course, Response):
+            # Returns a 404 if course_id is invalid, or request.user is not enrolled in the course
+            return course
 
-    def test_course_does_not_exist(self):
-        """
-        Test that requesting a valid, nonexistent course key returns an error as expected.
-        """
-        base_url = reverse(
-            self.namespaced_url,
-            kwargs={
-                'course_id': 'course-v1:MITx+8.MechCX+2014_T1',
-            }
-        )
-        url = "{0}?username={1}".format(base_url, self.student.username)
-        resp = self.client.get(url)
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertIn('error_code', resp.data)  # pylint: disable=no-member
-        self.assertEqual(
-            resp.data['error_code'],  # pylint: disable=no-member
-            'user_or_course_does_not_exist'
-        )
+        grade_user = self._get_effective_user(request, course)
+        prep_course_for_grading(course, request)
 
-    @ddt.data(
-        ({'letter_grade': None, 'percent': 0.4, 'passed': False}),
-        ({'letter_grade': 'Pass', 'percent': 1, 'passed': True}),
-    )
-    def test_grade(self, grade):
-        """
-        Test that the user gets her grade in case she answered tests with an insufficient score.
-        """
-        with patch('lms.djangoapps.grades.new.course_grade.CourseGradeFactory.get_persisted') as mock_grade:
-            grade_fields = {
-                'letter_grade': grade['letter_grade'],
-                'percent': grade['percent'],
-                'passed': grade['letter_grade'] is not None,
+        if isinstance(grade_user, Response):
+            # Returns a 403 if the request.user can't access grades for the requested user,
+            # or a 404 if the requested user does not exist or the course had no enrollments.
+            return grade_user
+        else:
+            # Grade for one user in course
+            course_grade = self._read_or_create_grade(grade_user, course, should_calculate_grade, use_email)
+            response = [course_grade]
 
-            }
-            mock_grade.return_value = MagicMock(**grade_fields)
-            resp = self.client.get(self.get_url(self.student.username))
+        return Response(response)
 
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        expected_data = {
-            'user': unicode(self.student.username),
-            'course_key': str(self.course_key),
-        }
 
-        expected_data.update(grade)
-        self.assertEqual(resp.data, [expected_data])  # pylint: disable=no-member
+class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
+    """
+    **Use Case**
 
-    @ddt.data(
-        'staff', 'global_staff'
-    )
-    def test_staff_can_see_student(self, staff_user):
-        """
-        Ensure that staff members can see her student's grades.
-        """
-        self.client.logout()
-        self.client.login(username=getattr(self, staff_user).username, password=self.password)
-        resp = self.client.get(self.get_url(self.student.username))
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        expected_data = [{
-            'user': self.student.username,
-            'letter_grade': None,
-            'percent': 0.0,
-            'course_key': str(self.course_key),
-            'passed': False
+        * Get course grades if all user who are enrolled in a course.
+
+        The currently logged-in user may request all enrolled user's grades information.
+
+    **Example Request**
+
+        GET /api/grades/v1/course_grade/{course_id}/all_users   - Get grades for all users in course
+
+    **GET Parameters**
+
+        A GET request may include the following parameters.
+
+        * course_id: (required) A string representation of a Course ID.
+
+    **GET Response Values**
+
+        If the request for information about the course grade
+        is successful, an HTTP 200 "OK" response is returned.
+
+        The HTTP 200 response has the following values.
+
+        * username: A string representation of a user's username passed in the request.
+
+        * course_id: A string representation of a Course ID.
+
+        * passed: Boolean representing whether the course has been
+                  passed according the course's grading policy.
+
+        * percent: A float representing the overall grade for the course
+
+        * letter_grade: A letter grade as defined in grading_policy (e.g. 'A' 'B' 'C' for 6.002x) or None
+
+    **Example GET Response**
+
+        [{
+            "username": "bob",
+            "course_key": "course-v1:edX+DemoX+Demo_Course",
+            "passed": false,
+            "percent": 0.03,
+            "letter_grade": null,
+        },
+        {
+            "username": "fred",
+            "course_key": "course-v1:edX+DemoX+Demo_Course",
+            "passed": true,
+            "percent": 0.83,
+            "letter_grade": "B",
+        },
+        {
+            "username": "kate",
+            "course_key": "course-v1:edX+DemoX+Demo_Course",
+            "passed": false,
+            "percent": 0.19,
+            "letter_grade": null,
         }]
-        self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
-
-
-class CourseGradeAllUsersViewClientCredentialsTest(BaseTest, GradeViewTestMixin):
-
-    def get_url(self):
-        """
-        Helper function to create the url
-        """
-        base_url = reverse(
-            'grades_api:v1:course_grades_all',
-            kwargs={
-                'course_id': self.course_key,
-            }
-        )
-
-        return base_url
-
-    def test_client_credential_access_allowed_2(self):
-        """
-        Request an access token using Client Credential Flow
-        """
-        token_request_data = {
-            'grant_type': 'client_credentials',
-        }
-        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
-
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
-
-        content = json.loads(response.content.decode("utf-8"))
-        access_token = content['access_token']
-
-        # use token to access the resource
-        auth_headers = {
-            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
-        }
-
-        request = self.factory.get(self.get_url(), **auth_headers)
-
-
-@ddt.ddt
-class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
-    """
-    Tests for grades related to a user
-        i.e. /api/grades/v1/course_grade/{course_id}/all_users
     """
 
-    @classmethod
-    def setUpClass(cls):
-        super(CourseGradeAllUsersViewTest, cls).setUpClass()
-        cls.namespaced_url = 'grades_api:v1:course_grades_all'
-
-    def setUp(self):
-        super(CourseGradeAllUsersViewTest, self).setUp()
-
-    def get_url(self):
+    def get(self, request, course_id):
         """
-        Helper function to create the url
+            Gets a course progress status.
+
+            Args:
+                request (Request): Django request object.
+                course_id (string): URI element specifying the course location.
+
+            Return:
+                A JSON serialized representation of the requesting user's current grade status.
         """
-        base_url = reverse(
-            self.namespaced_url,
-            kwargs={
-                'course_id': self.course_key,
-            }
-        )
+        required_token = request.META.get('HTTP_AUTHORIZATION')
+        if required_token:
+            applicationid = dot_models.AccessToken.objects.get(token=required_token.split()[1]).application
+            if applicationid.get_authorization_grant_type_display() is not 'Client credentials':
+                raise PermissionDenied
+        else:
+                raise PermissionDenied
 
-        return base_url
+        should_calculate_grade = request.GET.get('calculate')
+        use_email = request.GET.get('use_email', None)
 
-    def test_anonymous(self):
-        self.client.logout()
-        resp = self.client.get(self.get_url())
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        course = self._get_course(request, course_id, request.user, 'load')
 
-    def test_student_forbidden(self):
-        resp = self.client.get(self.get_url())
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        if isinstance(course, Response):
+            # Returns a 404 if course_id is invalid, or request.user is not enrolled in the course
+            return course
 
-    @ddt.data(
-        'staff', 'global_staff'
-    )
-    def test_staff_forbidden(self, staff_user):
-        self.client.logout()
-        self.client.login(username=getattr(self, staff_user).username, password=self.password)
-        resp = self.client.get(self.get_url())
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        enrollments_in_course = self._get_all_users(request, [course])
+        if isinstance(enrollments_in_course, Response):
+            # Returns a 403 if the request.user can't access grades for the requested user,
+            # or a 404 if the requested user does not exist or the course had no enrollments.
+            return enrollments_in_course
+
+        paged_enrollments = self.paginator.paginate_queryset(enrollments_in_course, self.request, view=self)
+        response = []
+
+        prep_course_for_grading(course, request)
+
+        for enrollment in paged_enrollments:
+            user = enrollment.user
+            course_grade = self._read_or_create_grade(user, course, should_calculate_grade, use_email)
+            response.append(course_grade)
+
+        return Response(response)
 
 
-@ddt.ddt
-class GradingPolicyTestMixin(object):
+@view_auth_classes()
+class CourseGradingPolicy(GradeViewMixin, ListAPIView):
     """
-    Mixin class for Grading Policy tests
+    **Use Case**
+
+        Get the course grading policy.
+
+    **Example requests**:
+
+        GET /api/grades/v0/policy/{course_id}/
+
+    **Response Values**
+
+        * assignment_type: The type of the assignment, as configured by course
+          staff. For example, course staff might make the assignment types Homework,
+          Quiz, and Exam.
+
+        * count: The number of assignments of the type.
+
+        * dropped: Number of assignments of the type that are dropped.
+
+        * weight: The weight, or effect, of the assignment type on the learner's
+          final grade.
     """
-    view_name = None
 
-    def setUp(self):
-        super(GradingPolicyTestMixin, self).setUp()
-        self.create_user_and_access_token()
+    allow_empty = False
 
-    def create_user_and_access_token(self):
-        # pylint: disable=missing-docstring
-        self.user = GlobalStaffFactory.create()
-        self.oauth_client = ClientFactory.create()
-        self.access_token = AccessTokenFactory.create(user=self.user, client=self.oauth_client).token
-
-    @classmethod
-    def create_course_data(cls):
-        # pylint: disable=missing-docstring
-        cls.invalid_course_id = 'foo/bar/baz'
-        cls.course = CourseFactory.create(display_name='An Introduction to API Testing', raw_grader=cls.raw_grader)
-        cls.course_id = unicode(cls.course.id)
-        with cls.store.bulk_operations(cls.course.id, emit_signals=False):
-            cls.sequential = ItemFactory.create(
-                category="sequential",
-                parent_location=cls.course.location,
-                display_name="Lesson 1",
-                format="Homework",
-                graded=True
-            )
-
-            factory = MultipleChoiceResponseXMLFactory()
-            args = {'choices': [False, True, False]}
-            problem_xml = factory.build_xml(**args)
-            cls.problem = ItemFactory.create(
-                category="problem",
-                parent_location=cls.sequential.location,
-                display_name="Problem 1",
-                format="Homework",
-                data=problem_xml,
-            )
-
-            cls.video = ItemFactory.create(
-                category="video",
-                parent_location=cls.sequential.location,
-                display_name="Video 1",
-            )
-
-            cls.html = ItemFactory.create(
-                category="html",
-                parent_location=cls.sequential.location,
-                display_name="HTML 1",
-            )
-
-    def http_get(self, uri, **headers):
-        """
-        Submit an HTTP GET request
-        """
-
-        default_headers = {
-            'HTTP_AUTHORIZATION': 'Bearer ' + self.access_token
-        }
-        default_headers.update(headers)
-
-        response = self.client.get(uri, follow=True, **default_headers)
-        return response
-
-    def assert_get_for_course(self, course_id=None, expected_status_code=200, **headers):
-        """
-        Submit an HTTP GET request to the view for the given course.
-        Validates the status_code of the response is as expected.
-        """
-
-        response = self.http_get(
-            reverse(self.view_name, kwargs={'course_id': course_id or self.course_id}),
-            **headers
-        )
-        self.assertEqual(response.status_code, expected_status_code)
-        return response
-
-    def get_auth_header(self, user):
-        """
-        Returns Bearer auth header with a generated access token
-        for the given user.
-        """
-        access_token = AccessTokenFactory.create(user=user, client=self.oauth_client).token
-        return 'Bearer ' + access_token
-
-    def test_get_invalid_course(self):
-        """
-        The view should return a 404 for an invalid course ID.
-        """
-        self.assert_get_for_course(course_id=self.invalid_course_id, expected_status_code=404)
-
-    def test_get(self):
-        """
-        The view should return a 200 for a valid course ID.
-        """
-        return self.assert_get_for_course()
-
-    def test_not_authenticated(self):
-        """
-        The view should return HTTP status 401 if user is unauthenticated.
-        """
-        self.assert_get_for_course(expected_status_code=401, HTTP_AUTHORIZATION=None)
-
-    def test_staff_authorized(self):
-        """
-        The view should return a 200 when provided an access token
-        for course staff.
-        """
-        user = StaffFactory(course_key=self.course.id)
-        auth_header = self.get_auth_header(user)
-        self.assert_get_for_course(HTTP_AUTHORIZATION=auth_header)
-
-    def test_not_authorized(self):
-        """
-        The view should return HTTP status 404 when provided an
-        access token for an unauthorized user.
-        """
-        user = UserFactory()
-        auth_header = self.get_auth_header(user)
-        self.assert_get_for_course(expected_status_code=404, HTTP_AUTHORIZATION=auth_header)
-
-    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_course_keys(self, modulestore_type):
-        """
-        The view should be addressable by course-keys from both module stores.
-        """
-        course = CourseFactory.create(
-            start=datetime(2014, 6, 16, 14, 30),
-            end=datetime(2015, 1, 16),
-            org="MTD",
-            default_store=modulestore_type,
-        )
-        self.assert_get_for_course(course_id=unicode(course.id))
-
-
-class CourseGradingPolicyTests(GradingPolicyTestMixin, SharedModuleStoreTestCase):
-    """
-    Tests for CourseGradingPolicy view.
-    """
-    view_name = 'grades_api:course_grading_policy'
-
-    raw_grader = [
-        {
-            "min_count": 24,
-            "weight": 0.2,
-            "type": "Homework",
-            "drop_count": 0,
-            "short_label": "HW"
-        },
-        {
-            "min_count": 4,
-            "weight": 0.8,
-            "type": "Exam",
-            "drop_count": 0,
-            "short_label": "Exam"
-        }
-    ]
-
-    @classmethod
-    def setUpClass(cls):
-        super(CourseGradingPolicyTests, cls).setUpClass()
-        cls.create_course_data()
-
-    def test_get(self):
-        """
-        The view should return grading policy for a course.
-        """
-        response = super(CourseGradingPolicyTests, self).test_get()
-
-        expected = [
-            {
-                "count": 24,
-                "weight": 0.2,
-                "assignment_type": "Homework",
-                "dropped": 0
-            },
-            {
-                "count": 4,
-                "weight": 0.8,
-                "assignment_type": "Exam",
-                "dropped": 0
-            }
-        ]
-        self.assertListEqual(response.data, expected)
-
-
-class CourseGradingPolicyMissingFieldsTests(GradingPolicyTestMixin, SharedModuleStoreTestCase):
-    """
-    Tests for CourseGradingPolicy view when fields are missing.
-    """
-    view_name = 'grades_api:course_grading_policy'
-
-    # Raw grader with missing keys
-    raw_grader = [
-        {
-            "min_count": 24,
-            "weight": 0.2,
-            "type": "Homework",
-            "drop_count": 0,
-            "short_label": "HW"
-        },
-        {
-            # Deleted "min_count" key
-            "weight": 0.8,
-            "type": "Exam",
-            "drop_count": 0,
-            "short_label": "Exam"
-        }
-    ]
-
-    @classmethod
-    def setUpClass(cls):
-        super(CourseGradingPolicyMissingFieldsTests, cls).setUpClass()
-        cls.create_course_data()
-
-    def test_get(self):
-        """
-        The view should return grading policy for a course.
-        """
-        response = super(CourseGradingPolicyMissingFieldsTests, self).test_get()
-
-        expected = [
-            {
-                "count": 24,
-                "weight": 0.2,
-                "assignment_type": "Homework",
-                "dropped": 0
-            },
-            {
-                "count": None,
-                "weight": 0.8,
-                "assignment_type": "Exam",
-                "dropped": 0
-            }
-        ]
-        self.assertListEqual(response.data, expected)
+    def get(self, request, course_id, **kwargs):
+        course = self._get_course(request, course_id, request.user, 'staff')
+        if isinstance(course, Response):
+            return course
+        return Response(GradingPolicySerializer(course.raw_grader, many=True).data)
