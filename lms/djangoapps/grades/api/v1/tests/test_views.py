@@ -339,7 +339,7 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
 
 
-class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin):
+class CourseGradeAllUsersViewClientCredentialsTest(BaseTest, GradeViewTestMixin):
 
     def get_url(self):
         """
