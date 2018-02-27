@@ -348,7 +348,55 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
 
 
-class CourseGradeAllUsersViewClientCredentialsTest(BaseTest, GradeViewTestMixin):
+@unittest.skipUnless(settings.FEATURES.get("ENABLE_OAUTH2_PROVIDER"), "OAuth2 not enabled")
+class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin, BaseTest):
+    """ Tests validating the client credentials grant behavior. """
+
+    @classmethod
+    def setUpClass(cls):
+        super(CourseGradeAllUsersViewClientCredentialsTest, cls).setUpClass()
+        cls.namespaced_url = 'grades_api:v1:course_grades_all'
+
+    def setUp(self):
+        super(CourseGradeAllUsersViewClientCredentialsTest, self).setUp()
+        self.user = UserFactory()
+
+    def get_url(self):
+        """
+        Helper function to create the url
+        """
+        base_url = reverse(
+            self.namespaced_url,
+            kwargs={
+                'course_id': self.course_key,
+            }
+        )
+
+        return base_url
+    """
+    def test_client_credential_access_allowed2(self):
+
+        token_request_data = {
+            'grant_type': 'client_credentials',
+        }
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        self.assertEqual(response.status_code, 200)
+
+        content = json.loads(response.content.decode("utf-8"))
+        access_token = content['access_token']
+
+        # use token to access the resource
+        auth_headers = {
+            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
+        }
+        request = self.factory.get(self.get_url(), **auth_headers)
+        self.assertEqual(response.status_code, 200)
+    """
+
+
+class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin):
 
     def get_url(self):
         """
@@ -378,9 +426,11 @@ class CourseGradeAllUsersViewClientCredentialsTest(BaseTest, GradeViewTestMixin)
         content = json.loads(response.content.decode("utf-8"))
         access_token = content['access_token']
 
+        # use token to access the resource
         auth_headers = {
             'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
         }
+        #equest = self.factory.get("/fake-resource", **auth_headers)
         request = self.factory.get(self.get_url(), **auth_headers)
         view = ResourceView.as_view()
         response = view(request)
