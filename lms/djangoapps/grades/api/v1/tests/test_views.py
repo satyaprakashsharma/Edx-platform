@@ -4,12 +4,22 @@ Tests for v1 views
 from datetime import datetime
 import ddt
 import json
+import unittest
+try:
+    import urllib.parse as urllib
+except ImportError:
+    import urllib
 
 from django.core.urlresolvers import reverse
+from django.test import TestCase
+from django.conf import settings
 from django.test.utils import override_settings
 from mock import MagicMock, patch
 from opaque_keys import InvalidKeyError
 from pytz import UTC
+from provider.oauth2.models import AccessToken
+from oauth2_provider.models import Application
+from oauth2_provider.tests.test_client_credential import BaseTest, ResourceView
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -17,6 +27,9 @@ from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
 from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
+from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
+from openedx.core.djangoapps.api_admin.models import ApiAccessRequest
+from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase, TEST_DATA_SPLIT_MODULESTORE
@@ -332,6 +345,95 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
             'passed': False
         }]
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
+
+
+@unittest.skipUnless(settings.FEATURES.get("ENABLE_OAUTH2_PROVIDER"), "OAuth2 not enabled")
+class CourseGradeAllUsersViewClientCredentialsTest(mixins.AccessTokenMixin, GradeViewTestMixin, BaseTest):
+    """ Tests validating the client credentials grant behavior. """
+
+    @classmethod
+    def setUpClass(cls):
+        super(CourseGradeAllUsersViewClientCredentialsTest, cls).setUpClass()
+        cls.namespaced_url = 'grades_api:v1:course_grades_all'
+
+    def setUp(self):
+        super(CourseGradeAllUsersViewClientCredentialsTest, self).setUp()
+        self.user = UserFactory()
+
+    def get_url(self):
+        """
+        Helper function to create the url
+        """
+        base_url = reverse(
+            self.namespaced_url,
+            kwargs={
+                'course_id': self.course_key,
+            }
+        )
+
+        return base_url
+    """
+    def test_client_credential_access_allowed2(self):
+
+        token_request_data = {
+            'grant_type': 'client_credentials',
+        }
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        self.assertEqual(response.status_code, 200)
+
+        content = json.loads(response.content.decode("utf-8"))
+        access_token = content['access_token']
+
+        # use token to access the resource
+        auth_headers = {
+            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
+        }
+        request = self.factory.get(self.get_url(), **auth_headers)
+        self.assertEqual(response.status_code, 200)
+    """
+
+
+class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin):
+
+    def get_url(self):
+        """
+        Helper function to create the url
+        """
+        base_url = reverse(
+            'grades_api:v1:course_grades_all',
+            kwargs={
+                'course_id': self.course_key,
+            }
+        )
+
+        return base_url
+
+    def test_client_credential_access_allowed_2(self):
+        """
+        Request an access token using Client Credential Flow
+        """
+        token_request_data = {
+            'grant_type': 'client_credentials',
+        }
+        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
+
+        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
+        self.assertEqual(response.status_code, 200)
+
+        content = json.loads(response.content.decode("utf-8"))
+        access_token = content['access_token']
+
+        # use token to access the resource
+        auth_headers = {
+            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
+        }
+        #equest = self.factory.get("/fake-resource", **auth_headers)
+        request = self.factory.get(self.get_url(), **auth_headers)
+        view = ResourceView.as_view()
+        response = view(request)
+        self.assertEqual(response, "This is a protected resource")
 
 
 @ddt.ddt
