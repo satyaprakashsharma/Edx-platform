@@ -17,9 +17,6 @@ from django.test.utils import override_settings
 from mock import MagicMock, patch
 from opaque_keys import InvalidKeyError
 from pytz import UTC
-from provider.oauth2.models import AccessToken
-from oauth2_provider.models import Application
-from oauth2_provider.tests.test_client_credential import BaseTest, ResourceView
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -27,7 +24,6 @@ from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
 from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
-from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
