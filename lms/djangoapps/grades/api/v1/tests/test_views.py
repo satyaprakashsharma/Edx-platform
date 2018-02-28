@@ -388,6 +388,50 @@ class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
         resp = self.client.get(self.get_url())
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
+@ddt.ddt
+class CourseGradeAllUsersClientcredentialTest(GradeViewTestMixin, APITestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super(CourseGradeAllUsersViewTest, cls).setUpClass()
+        cls.namespaced_url = 'grades_api:v1:course_grades_all'
+
+    def setUp(self):
+        super(CourseGradeAllUsersClientcredentialTest, self).setUp()
+        self.create_user_and_access_token()
+
+    def create_user_and_access_token(self):
+        # pylint: disable=missing-docstring
+        self.user = GlobalStaffFactory.create()
+        self.oauth_client = ClientFactory.create()
+        self.access_token = AccessTokenFactory.create(user=self.user, client=self.oauth_client).token
+
+    def get_url(self):
+        """
+        Helper function to create the url
+        """
+        base_url = reverse(
+            self.namespaced_url,
+            kwargs={
+                'course_id': self.course_key,
+            }
+        )
+
+        return base_url
+
+    def test_http_get(self, **headers):
+        """
+        Submit an HTTP GET request
+        """
+
+        default_headers = {
+            'HTTP_AUTHORIZATION': 'Bearer ' + self.access_token
+        }
+        default_headers.update(headers)
+
+        response = self.client.get(self.get_url(), follow=True, **default_headers)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
 
 @ddt.ddt
 class GradingPolicyTestMixin(object):
