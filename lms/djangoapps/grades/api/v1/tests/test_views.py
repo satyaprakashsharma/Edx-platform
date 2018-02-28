@@ -388,6 +388,7 @@ class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
         resp = self.client.get(self.get_url())
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
+
 @ddt.ddt
 class CourseGradeAllUsersClientcredentialTest(GradeViewTestMixin, APITestCase):
 
