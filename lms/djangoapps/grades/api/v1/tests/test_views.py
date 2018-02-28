@@ -394,7 +394,7 @@ class CourseGradeAllUsersClientcredentialTest(GradeViewTestMixin, APITestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(CourseGradeAllUsersViewTest, cls).setUpClass()
+        super(CourseGradeAllUsersClientcredentialTest, cls).setUpClass()
         cls.namespaced_url = 'grades_api:v1:course_grades_all'
 
     def setUp(self):
