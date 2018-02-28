@@ -328,7 +328,7 @@ class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
         required_token = request.META.get('HTTP_AUTHORIZATION')
         if required_token:
             applicationid = dot_models.AccessToken.objects.get(token=required_token.split()[1]).application
-            if applicationid.get_authorization_grant_type_display() is not 'Client credentials':
+            if applicationid.get_authorization_grant_type_display() != 'Client credentials':
                 raise PermissionDenied
         else:
                 raise PermissionDenied
