@@ -22,6 +22,7 @@ from rest_framework.test import APITestCase
 
 from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
 from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
+from edx_oauth2_provider.tests.base import BaseTestCase
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
@@ -390,47 +391,56 @@ class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
 
 
 @ddt.ddt
-class CourseGradeAllUsersClientcredentialTest(GradeViewTestMixin, APITestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        super(CourseGradeAllUsersClientcredentialTest, cls).setUpClass()
-        cls.namespaced_url = 'grades_api:v1:course_grades_all'
+class CourseGradeAllUsersClientcredentialTest(BaseTestCase, GradeViewTestMixin, APITestCase):
 
     def setUp(self):
         super(CourseGradeAllUsersClientcredentialTest, self).setUp()
-        self.create_user_and_access_token()
 
-    def create_user_and_access_token(self):
-        # pylint: disable=missing-docstring
-        self.user = GlobalStaffFactory.create()
-        self.oauth_client = ClientFactory.create()
-        self.access_token = AccessTokenFactory.create(user=self.user, client=self.oauth_client).token
+    def login_and_authorize(self, scope=None, claims=None, trusted=False, validate_session=True):
+        """ Login into client using OAuth2 authorization flow. """
 
-    def get_url(self):
-        """
-        Helper function to create the url
-        """
-        base_url = reverse(
-            self.namespaced_url,
-            kwargs={
-                'course_id': self.course_key,
-            }
-        )
+        self.set_trusted(self.auth_client, trusted)
+        self.client.login(username=self.user.username, password=self.password)
 
-        return base_url
-
-    def test_http_get(self, **headers):
-        """
-        Submit an HTTP GET request
-        """
-
-        default_headers = {
-            'HTTP_AUTHORIZATION': 'Bearer ' + self.access_token
+        client_id = self.auth_client.client_id
+        payload = {
+            'client_id': client_id,
+            'redirect_uri': self.auth_client.redirect_uri,
+            'response_type': 'code',
+            'state': 'some_state',
         }
-        default_headers.update(headers)
+        _add_values(payload, 'id_token', scope, claims)
 
-        response = self.client.get(self.get_url(), follow=True, **default_headers)
+        response = self.client.get(reverse('oauth2:capture'), payload)
+        self.assertEqual(302, response.status_code)
+
+        response = self.client.get(reverse('oauth2:authorize'), payload)
+
+        if validate_session:
+            self.assertListEqual(self.client.session[AUTHORIZED_CLIENTS_SESSION_KEY], [client_id])
+
+        return response
+
+    def get_access_token_response(self, scope=None, claims=None):
+        """ Get a new access token using the OAuth2 authorization flow. """
+        response = self.login_and_authorize(scope, claims, trusted=True)
+        self.assertEqual(302, response.status_code)
+        self.assertEqual(reverse('oauth2:redirect'), normpath(response['Location']))
+
+        response = self.client.get(reverse('oauth2:redirect'))
+        self.assertEqual(302, response.status_code)
+
+        query = QueryDict(urlparse(response['Location']).query)
+
+        payload = {
+            'grant_type': 'client_credentials',
+            'client_id': self.auth_client.client_id,
+            'client_secret': self.client_secret,
+            'code': query['code'],
+        }
+        _add_values(payload, 'id_token', scope, claims)
+
+        response = self.client.post(reverse('oauth2:access_token'), payload)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
