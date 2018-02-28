@@ -17,17 +17,14 @@ from django.test.utils import override_settings
 from mock import MagicMock, patch
 from opaque_keys import InvalidKeyError
 from pytz import UTC
-from provider.oauth2.models import AccessToken
-from oauth2_provider.models import Application
-from oauth2_provider.tests.test_client_credential import BaseTest, ResourceView
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
 from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
+from edx_oauth2_provider.tests.base import BaseTestCase
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
-from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
@@ -346,44 +343,6 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
 
 
-class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin):
-
-    def get_url(self):
-        """
-        Helper function to create the url
-        """
-        base_url = reverse(
-            'grades_api:v1:course_grades_all',
-            kwargs={
-                'course_id': self.course_key,
-            }
-        )
-
-        return base_url
-
-    def test_client_credential_access_allowed_2(self):
-        """
-        Request an access token using Client Credential Flow
-        """
-        token_request_data = {
-            'grant_type': 'client_credentials',
-        }
-        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
-
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
-
-        content = json.loads(response.content.decode("utf-8"))
-        access_token = content['access_token']
-
-        # use token to access the resource
-        auth_headers = {
-            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
-        }
-        request = self.client.get(self.get_url(), **auth_headers)
-        self.assertEqual(response.status_code, 200)
-
-
 @ddt.ddt
 class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
     """
@@ -429,6 +388,60 @@ class CourseGradeAllUsersViewTest(GradeViewTestMixin, APITestCase):
         self.client.login(username=getattr(self, staff_user).username, password=self.password)
         resp = self.client.get(self.get_url())
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@ddt.ddt
+class CourseGradeAllUsersClientcredentialTest(BaseTestCase, GradeViewTestMixin, APITestCase):
+
+    def setUp(self):
+        super(CourseGradeAllUsersClientcredentialTest, self).setUp()
+
+    def login_and_authorize(self, scope=None, claims=None, trusted=False, validate_session=True):
+        """ Login into client using OAuth2 authorization flow. """
+
+        self.set_trusted(self.auth_client, trusted)
+        self.client.login(username=self.user.username, password=self.password)
+
+        client_id = self.auth_client.client_id
+        payload = {
+            'client_id': client_id,
+            'redirect_uri': self.auth_client.redirect_uri,
+            'response_type': 'code',
+            'state': 'some_state',
+        }
+        _add_values(payload, 'id_token', scope, claims)
+
+        response = self.client.get(reverse('oauth2:capture'), payload)
+        self.assertEqual(302, response.status_code)
+
+        response = self.client.get(reverse('oauth2:authorize'), payload)
+
+        if validate_session:
+            self.assertListEqual(self.client.session[AUTHORIZED_CLIENTS_SESSION_KEY], [client_id])
+
+        return response
+
+    def get_access_token_response(self, scope=None, claims=None):
+        """ Get a new access token using the OAuth2 authorization flow. """
+        response = self.login_and_authorize(scope, claims, trusted=True)
+        self.assertEqual(302, response.status_code)
+        self.assertEqual(reverse('oauth2:redirect'), normpath(response['Location']))
+
+        response = self.client.get(reverse('oauth2:redirect'))
+        self.assertEqual(302, response.status_code)
+
+        query = QueryDict(urlparse(response['Location']).query)
+
+        payload = {
+            'grant_type': 'client_credentials',
+            'client_id': self.auth_client.client_id,
+            'client_secret': self.client_secret,
+            'code': query['code'],
+        }
+        _add_values(payload, 'id_token', scope, claims)
+
+        response = self.client.post(reverse('oauth2:access_token'), payload)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 @ddt.ddt
