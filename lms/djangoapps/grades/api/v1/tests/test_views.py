@@ -17,9 +17,6 @@ from django.test.utils import override_settings
 from mock import MagicMock, patch
 from opaque_keys import InvalidKeyError
 from pytz import UTC
-from provider.oauth2.models import AccessToken
-from oauth2_provider.models import Application
-from oauth2_provider.tests.test_client_credential import BaseTest, ResourceView
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -27,7 +24,6 @@ from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
 from edx_oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
 from lms.djangoapps.courseware.tests.factories import GlobalStaffFactory, StaffFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
-from openedx.core.djangoapps.oauth_dispatch.adapters.dot import DOTAdapter
 from openedx.core.djangoapps.oauth_dispatch.tests import mixins
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
@@ -344,44 +340,6 @@ class CurrentGradeViewTest(GradeViewTestMixin, APITestCase):
             'passed': False
         }]
         self.assertEqual(resp.data, expected_data)  # pylint: disable=no-member
-
-
-class CourseGradeAllUsersViewClientCredentials2Test(BaseTest, GradeViewTestMixin):
-
-    def get_url(self):
-        """
-        Helper function to create the url
-        """
-        base_url = reverse(
-            'grades_api:v1:course_grades_all',
-            kwargs={
-                'course_id': self.course_key,
-            }
-        )
-
-        return base_url
-
-    def test_client_credential_access_allowed_2(self):
-        """
-        Request an access token using Client Credential Flow
-        """
-        token_request_data = {
-            'grant_type': 'client_credentials',
-        }
-        auth_headers = self.get_basic_auth_header(self.application.client_id, self.application.client_secret)
-
-        response = self.client.post(reverse('oauth2_provider:token'), data=token_request_data, **auth_headers)
-        self.assertEqual(response.status_code, 200)
-
-        content = json.loads(response.content.decode("utf-8"))
-        access_token = content['access_token']
-
-        # use token to access the resource
-        auth_headers = {
-            'HTTP_AUTHORIZATION': 'Bearer ' + access_token,
-        }
-        request = self.factory.get(self.get_url(), **auth_headers)
-        self.assertEqual(response.status_code, 200)
 
 
 @ddt.ddt
