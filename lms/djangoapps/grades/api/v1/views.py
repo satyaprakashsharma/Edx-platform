@@ -257,9 +257,9 @@ class CourseGradeAllUsersView(GradeViewMixin, GenericAPIView):
     """
     **Use Case**
 
-        * Get course grades if all user who are enrolled in a course.
+        * Get course grades of all users who are enrolled in a course.
 
-        The currently logged-in user may request all enrolled user's grades information.
+        Any user with Client credentilas token may request all enrolled user's grades information.
 
     **Example Request**
 
