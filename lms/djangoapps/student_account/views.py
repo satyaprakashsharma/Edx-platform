@@ -114,7 +114,10 @@ def login_and_registration_form(request, initial_mode="login"):
     if isinstance(third_party_auth_context, HttpResponse):
         return third_party_auth_context
 
-    enable_msa_migration = configuration_helpers.get_value("ENABLE_MSA_MIGRATION")
+    enable_msa_migration = configuration_helpers.get_value(
+        "ENABLE_MSA_MIGRATION",
+        settings.FEATURES.get("ENABLE_MSA_MIGRATION", False)
+    )
 
     # Otherwise, render the combined login/registration page
     context = {
@@ -641,7 +644,7 @@ def _redirect_if_migration_complete(user):
         to view the account migration pages anymore, redirect to dashboard
     """
     meta = user.profile.get_meta()
-    if meta.get(settings.MSA_ACCOUNT_MIGRATION_STATUS_KEY) == settings.MSA_MIGRATION_STATUS_COMPLETED:
+    if meta.get(settings.MSA_ACCOUNT_MIGRATION_STATUS_KEY) == settings.MSA_MIGRATION_STATUS_STARTED_NOT_CONFIRMED:
         return redirect(reverse('dashboard'))
 
 

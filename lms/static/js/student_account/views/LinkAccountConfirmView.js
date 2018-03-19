@@ -37,7 +37,7 @@
                     data: data,
                     dataType: 'html',
                     success: function() {
-                        view.redirect_to('/logout?msa_only=true&auto_link=true');
+                        view.redirect_to('/logout?msa_only=true');
                     },
                     error: function() {
                         view.showError('There was an error disconnecting your account.');
