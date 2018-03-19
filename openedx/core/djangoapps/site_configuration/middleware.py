@@ -83,6 +83,7 @@ class LoginRequiredMiddleware:
             r'^admin.*$'
         ]
 
+
     def process_view(self, request, view_func, view_args, view_kwargs):
         """
         If the site is configured to restrict not logged in users to the LOGIN_EXEMPT_URLS
@@ -119,16 +120,23 @@ class AccountLinkingMiddleware(object):
     Middleware that requires to enable users to linked their account with edx user account
     other than ACCOUNT_LINK if user is authenticated.
     """
+    def check_course_access_role(self, user_id):
+        """
+        Check is the requested user is instructor for any existing course
+        """
+        try:
+            return bool(CourseAccessRole.objects.get(user_id=user_id))
+        except:
+            return False
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         """
         If the site is configured to restrict not logged in users to the DEFAULT_ACCOUNT_LINK_EXEMPT_URLS
         from accessing pages, wrap the next view with the django login_required middleware
         """
-
-        course_access_role_user = CourseAccessRole.objects.get(user_id=request.user.id).check
+        course_access_role_user = self.check_course_access_role(request.user.id)
         user_not_privileged = (
-            request.user.is_authenticated() and not request.user.is_staff and not request.user.is_superuser and not course_access_role_user
+            request.user.is_authenticated() and not request.user.is_staff and not request.user.is_superuser and course_access_role_user
         )
         if user_not_privileged and configuration_helpers.get_value("ENABLE_MSA_MIGRATION"):
             # Check if user has associated a Microsoft account
