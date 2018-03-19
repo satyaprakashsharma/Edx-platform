@@ -128,7 +128,7 @@ class AccountLinkingMiddleware(object):
 
         course_access_role_user = CourseAccessRole.objects.get(user_id=request.user.id).check
         user_not_privileged = (
-            request.user.is_authenticated() and not request.user.is_staff and not request.user.is_superuser and course_access_role_user
+            request.user.is_authenticated() and not request.user.is_staff and not request.user.is_superuser and not course_access_role_user
         )
         if user_not_privileged and configuration_helpers.get_value("ENABLE_MSA_MIGRATION"):
             # Check if user has associated a Microsoft account
