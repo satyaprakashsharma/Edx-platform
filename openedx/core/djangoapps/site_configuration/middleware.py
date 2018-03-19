@@ -10,6 +10,7 @@ from social.apps.django_app.default.models import UserSocialAuth
 from django.shortcuts import redirect
 
 from student.models import UserProfile
+from student.models import CourseAccessRole
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 
 
@@ -124,8 +125,10 @@ class AccountLinkingMiddleware(object):
         If the site is configured to restrict not logged in users to the DEFAULT_ACCOUNT_LINK_EXEMPT_URLS
         from accessing pages, wrap the next view with the django login_required middleware
         """
+
+        course_access_role_user = CourseAccessRole.objects.get(user_id=request.user.id).check
         user_not_privileged = (
-            request.user.is_authenticated() and not request.user.is_staff and not request.user.is_superuser
+            request.user.is_authenticated() and not request.user.is_staff and not request.user.is_superuser and course_access_role_user
         )
         if user_not_privileged and configuration_helpers.get_value("ENABLE_MSA_MIGRATION"):
             # Check if user has associated a Microsoft account
