@@ -2395,6 +2395,8 @@ REGISTRATION_EXTRA_FIELDS = {
     'country': 'hidden',
 }
 
+REGISTRATION_EMAIL_PATTERNS_ALLOWED: ["^.*@(.*\\.)?cloudthat\\.in$"],
+
 # Optional setting to restrict registration / account creation to only emails
 # that match a regex in this list. Set to None to allow any email (default).
 REGISTRATION_EMAIL_PATTERNS_ALLOWED = None
